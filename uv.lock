@@ -1696,6 +1696,7 @@ dependencies = [
     { name = "litellm" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
+    { name = "tiktoken" },
 ]
 
 [package.metadata]
@@ -1708,6 +1709,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.25.0" },
+    { name = "tiktoken", specifier = ">=0.9.0" },
 ]
 provides-extras = ["test"]
 

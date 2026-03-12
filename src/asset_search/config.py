@@ -59,6 +59,23 @@ def _resolve_float(env_key: str, toml_section: dict, toml_key: str, default: flo
     return float(toml_section.get(toml_key, default))
 
 
+def _to_pydantic_ai_model(litellm_model: str) -> str:
+    """Convert a litellm model string to pydantic-ai ``provider:model`` format.
+
+    pydantic-ai expects ``provider:model`` (colon-separated).  Litellm strings
+    like ``bedrock/us.anthropic.claude-…`` use slashes and are not understood
+    directly by pydantic-ai.  Prefixing with ``litellm:`` makes pydantic-ai
+    delegate to the litellm provider which knows how to route them.
+    """
+    # Already in pydantic-ai native format (e.g. "anthropic:claude-…")
+    if ":" in litellm_model and "/" not in litellm_model.split(":")[0]:
+        return litellm_model
+    # Litellm format (contains "/") — wrap for pydantic-ai
+    if "/" in litellm_model:
+        return f"litellm:{litellm_model}"
+    return litellm_model
+
+
 def _resolve_bool(env_key: str, toml_section: dict, toml_key: str, default: bool) -> bool:
     env_val = os.environ.get(env_key)
     if env_val is not None:

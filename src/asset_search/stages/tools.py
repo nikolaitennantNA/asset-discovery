@@ -94,22 +94,25 @@ async def crawl_page(url: str) -> dict[str, Any]:
     assert _config is not None
     async with httpx.AsyncClient(
         base_url="https://api.crawl4ai.com/v1",
-        headers={"Authorization": f"Bearer {_config.crawl4ai_api_key}"},
+        headers={"X-API-Key": _config.crawl4ai_api_key},
         timeout=30.0,
     ) as client:
         try:
-            resp = await client.post("/crawl", json={"urls": url, "magic": True, "timeout": 20000})
+            resp = await client.post("/crawl", json={
+                "url": url,
+                "strategy": "browser",
+                "include_fields": ["links", "metadata"],
+            })
             resp.raise_for_status()
             data = resp.json()
             if not data.get("success"):
                 return {"markdown": "", "error": data.get("error", "Unknown error")}
-            result = data["result"]
-            links = result.get("links", {})
+            links = data.get("links", {})
             return {
-                "markdown": result.get("markdown", ""),
+                "markdown": data.get("markdown", ""),
                 "links_internal": links.get("internal", []),
                 "links_external": links.get("external", []),
-                "metadata": result.get("metadata", {}),
+                "metadata": data.get("metadata", {}),
             }
         except Exception as e:
             return {"markdown": "", "error": str(e)}

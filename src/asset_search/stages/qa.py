@@ -7,7 +7,7 @@ from typing import Any
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPServerStdio
 
-from ..config import Config
+from ..config import Config, _to_pydantic_ai_model
 from ..db import get_connection, save_discovered_assets
 from ..display import show_stage
 from ..models import Asset, QAReport
@@ -61,7 +61,7 @@ async def run_qa(
     qa_tools.append(scrape_and_extract)
 
     agent = Agent(
-        config.qa_model,
+        _to_pydantic_ai_model(config.qa_model),
         system_prompt=system_prompt,
         output_type=QAReport,
         tools=qa_tools,

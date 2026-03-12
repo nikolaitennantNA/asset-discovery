@@ -9,7 +9,7 @@ from typing import Any
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPServerStdio
 
-from ..config import Config
+from ..config import Config, _to_pydantic_ai_model
 from ..db import get_connection, get_discovered_urls
 from ..display import show_detail, show_stage
 from . import tools
@@ -44,7 +44,7 @@ async def run_discover(
         )
 
     agent = Agent(
-        config.discover_model,
+        _to_pydantic_ai_model(config.discover_model),
         system_prompt=system_prompt,
         tools=[
             tools.fetch_sitemap,

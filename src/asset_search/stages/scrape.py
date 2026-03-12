@@ -12,13 +12,26 @@ from ..display import show_stage
 
 
 def _config_from_notes(notes: str | None) -> ScrapeConfig:
+    """Build per-URL ScrapeConfig from discover agent notes.
+
+    Maps human-readable notes (store_locator, waf_blocked, wait_for:selector)
+    to actual Crawl4AI Cloud API parameters.
+    """
     if not notes:
         return ScrapeConfig()
     notes_lower = notes.lower()
-    return ScrapeConfig(
-        scan_full_page="store_locator" in notes_lower or "scroll" in notes_lower,
-        proxy="residential" if "waf_blocked" in notes_lower else "datacenter",
-    )
+    kwargs: dict = {}
+    # WAF-blocked sites need proxy escalation
+    if "waf_blocked" in notes_lower:
+        kwargs["use_proxy"] = True
+    # Store locators / AJAX pages need a wait_for selector if specified
+    if "wait_for:" in notes_lower:
+        # Extract selector from notes like "wait_for:.locations-list"
+        for part in notes.split():
+            if part.lower().startswith("wait_for:"):
+                kwargs["wait_for"] = part.split(":", 1)[1]
+                break
+    return ScrapeConfig(**kwargs) if kwargs else ScrapeConfig()
 
 
 async def run_scrape(
