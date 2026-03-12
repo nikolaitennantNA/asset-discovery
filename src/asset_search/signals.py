@@ -1,3 +1,4 @@
+# TODO(phase-1): Move to web-scraper package. Asset-search-v2 will import from there.
 """Extract structured signal values from raw HTML.
 
 Parses raw HTML for embedded location data that markdown conversion misses:

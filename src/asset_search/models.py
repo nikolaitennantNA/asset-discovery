@@ -1,45 +1,51 @@
+"""Pydantic models for the asset discovery pipeline — TREX ALD aligned."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel
 
 
 class Asset(BaseModel):
-    """A physical asset discovered for a company. Matches ALD assets table schema."""
+    """Asset extraction model — TREX ALD aligned."""
 
+    # --- TREX fields ---
     asset_name: str
     entity_name: str = ""
     entity_isin: str = ""
     parent_name: str = ""
     parent_isin: str = ""
-    address: str = ""
+    entity_stake_pct: float | None = None
     latitude: float | None = None
     longitude: float | None = None
-    asset_type: str = ""
     status: str = ""
     capacity: float | None = None
     capacity_units: str = ""
-    ownership_pct: float | None = None
+    asset_type_raw: str = ""
+    supplementary_details: dict = {}
+
+    # --- Set by pipeline, not by LLM ---
+    asset_id: str = ""
+    naturesense_asset_type: str = ""
+    industry_code: str = ""
+    date_researched: str = ""
+    attribution_source: str = ""
+
+    # --- Pipeline working fields (not in TREX export) ---
+    address: str = ""
     source_url: str = ""
     domain_source: str = ""
-    supplementary_details: dict = {}
+
+
+class CoverageFlag(BaseModel):
+    flag_type: str
+    description: str
+    severity: str = "medium"
 
 
 class QAReport(BaseModel):
-    """Output of QA stage."""
-
     quality_score: float = 0.0
     missing_types: list[str] = []
     missing_regions: list[str] = []
     issues: list[str] = []
     should_enrich: bool = False
-    coverage_flags: list[str] = []
-
-
-class CoverageFlag(BaseModel):
-    """A flag raised when coverage is clearly insufficient."""
-
-    issuer_id: str
-    flag_type: str
-    severity: str = "warning"
-    message: str
-    details: dict = {}
+    coverage_flags: list[CoverageFlag] = []
