@@ -1,0 +1,62 @@
+# asset-search-v2 master config
+#
+# Secrets (API keys, DB URLs) go in .env — never here.
+# Everything else lives here. Env vars override any value below.
+#
+# Resolution order per field: env var > this file > hardcoded default.
+
+# ── Models ────────────────────────────────────────────────────────────────────
+# Any litellm-supported model string: "openai/gpt-5-mini", "bedrock/us.anthropic.claude-...", etc.
+[models]
+profile  = "bedrock/us.anthropic.claude-opus-4-6-20250219-v1:0"
+discover = "bedrock/us.anthropic.claude-opus-4-6-20250219-v1:0"
+extract  = "bedrock/us.anthropic.claude-opus-4-6-20250219-v1:0"
+merge    = "openai/gpt-5-mini"
+qa       = "bedrock/us.anthropic.claude-opus-4-6-20250219-v1:0"
+
+# ── corp-profile ──────────────────────────────────────────────────────────────
+[profile]
+web_search       = false
+# web_search_model = ""   # defaults to profile model
+
+# ── web-scraper ───────────────────────────────────────────────────────────────
+[scraper]
+default_timeout_ms = 30_000
+default_proxy      = false
+batch_limit        = 10
+client_timeout_s   = 120.0
+strategy           = "browser"
+
+# ── doc-extractor ─────────────────────────────────────────────────────────────
+[extractor]
+max_batch_tokens = 65_000
+max_page_tokens  = 35_000
+overlap_tokens   = 5_000
+max_retries      = 2
+
+# ── rag ───────────────────────────────────────────────────────────────────────
+[rag]
+embedding_model  = "text-embedding-3-small"
+embedding_dim    = 1536
+chunk_tokens     = 512
+embed_batch_size = 100
+rerank_model     = "rerank-v3.5"
+
+# ── AWS (shared across all Bedrock-based models) ─────────────────────────────
+[aws]
+region = "us-east-2"
+# profile = ""
+
+# ── Search ────────────────────────────────────────────────────────────────────
+[search]
+provider = "exa"    # exa | brave | tavily | openai
+
+# ── Pipeline caps ─────────────────────────────────────────────────────────────
+[pipeline]
+max_scrape_concurrency  = 100
+max_extract_concurrency = 10
+page_stale_days         = 30
+max_discover_tool_calls = 200
+max_discover_minutes    = 15
+max_qa_iterations       = 2
+max_urls_per_run        = 5000

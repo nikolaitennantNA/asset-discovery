@@ -65,7 +65,7 @@ async def run(
     rag_store = None
     try:
         from rag import RAGStore
-        rag_store = RAGStore(pg_url=config.corpgraph_db_url)
+        rag_store = RAGStore(pg_url=config.corpgraph_db_url, config=config.rag_config())
     except ImportError:
         pass
 

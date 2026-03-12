@@ -53,6 +53,7 @@ async def run_scrape(
                 api_key=config.crawl4ai_api_key,
                 configs=configs,
                 max_concurrency=config.max_scrape_concurrency,
+                scraper_config=config.scraper_config(),
             )
 
         all_pages: list[dict[str, Any]] = list(cached_pages)

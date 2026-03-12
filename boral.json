@@ -1,0 +1,37 @@
+{
+  "issuer_id": "boral-ltd",
+  "legal_name": "Boral Limited",
+  "lei": "254900TWRKHBRBSJVN38",
+  "jurisdiction": "AU",
+  "isin_list": ["AU000000BLD2"],
+  "all_isins": ["AU000000BLD2"],
+  "aliases": ["Boral"],
+  "description": "Boral Limited is Australia's largest integrated construction materials company. The company manufactures and supplies construction materials including cement, concrete, asphalt, quarry products, timber, roofing tiles, and masonry products.",
+  "primary_industry": "Construction Materials",
+  "operating_countries": ["AU"],
+  "business_segments": ["Cement", "Concrete", "Quarries", "Asphalt", "Timber", "Roofing"],
+  "subsidiaries": [
+    {
+      "legal_name": "Boral Cement Limited",
+      "jurisdiction": "AU",
+      "ownership_percentage": 100.0,
+      "rel_type": "subsidiary"
+    },
+    {
+      "legal_name": "Boral Concrete",
+      "jurisdiction": "AU",
+      "ownership_percentage": 100.0,
+      "rel_type": "subsidiary"
+    }
+  ],
+  "existing_assets": [],
+  "discovered_assets": [],
+  "estimated_asset_count": 350,
+  "material_asset_types": [
+    {"type": "Cement Plant", "count": 3},
+    {"type": "Concrete Batching Plant", "count": 200},
+    {"type": "Quarry", "count": 50},
+    {"type": "Asphalt Plant", "count": 40},
+    {"type": "Timber Mill", "count": 10}
+  ]
+}

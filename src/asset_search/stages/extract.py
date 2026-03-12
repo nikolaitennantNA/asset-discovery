@@ -79,6 +79,7 @@ async def run_extract(
         new_assets = await extract(
             documents=documents, schema=Asset, prompt=prompt,
             model=config.extract_model, max_concurrency=config.max_extract_concurrency,
+            config=config.extractor_config(),
         )
 
         # Save per-page extraction results
