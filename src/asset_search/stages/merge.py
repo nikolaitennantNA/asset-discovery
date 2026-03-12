@@ -36,6 +36,20 @@ Given a batch of newly extracted assets and existing known assets:
 Return JSON array of objects with all Asset fields plus matched_asset_id.
 """
 
+FINAL_DEDUP_PROMPT = """\
+You are doing a FINAL deduplication pass on a merged asset list.
+
+These assets were merged in batches — some cross-batch duplicates may remain.
+Identify duplicates: same physical facility appearing with different names, \
+slight address variations, or different levels of detail.
+
+For each group of duplicates, COMBINE all information into one record — merge \
+the richest name, most complete address, all available coordinates, capacity data, \
+and supplementary details from every duplicate. Preserve the asset_id from the \
+version that has one (or the first one if multiple do).
+Return JSON array of the deduplicated assets (Asset fields only, no matched_asset_id).
+"""
+
 
 async def run_merge(
     issuer_id: str, extracted_assets: list[Asset], config: Config, industry_code: str = "",
@@ -68,6 +82,10 @@ async def run_merge(
                 asset.attribution_source = "asset_search"
                 asset.date_researched = date.today().isoformat()
                 final_assets.append(asset)
+
+        # Final cross-batch dedup pass (spec §8: catch remaining duplicates)
+        if len(final_assets) > 1:
+            final_assets = await _final_dedup(final_assets, config.merge_model, costs)
 
         save_discovered_assets(conn, issuer_id, [a.model_dump() for a in final_assets])
     finally:
@@ -130,3 +148,32 @@ async def _merge_batch(
         return merged
     except Exception:
         return batch
+
+
+async def _final_dedup(
+    assets: list[Asset], model: str, costs: CostTracker | None = None,
+) -> list[Asset]:
+    """Final cross-batch dedup pass on the full merged asset list."""
+    assets_json = json.dumps([a.model_dump() for a in assets], default=str)
+
+    response = await litellm.acompletion(
+        model=model,
+        messages=[
+            {"role": "system", "content": FINAL_DEDUP_PROMPT},
+            {"role": "user", "content": f"## All merged assets ({len(assets)} total)\n{assets_json}"},
+        ],
+        response_format={"type": "json_object"},
+    )
+
+    if costs:
+        costs.track_litellm(response, model, "merge")
+
+    try:
+        result = json.loads(response.choices[0].message.content)
+        assets_data = result if isinstance(result, list) else result.get("assets", [])
+        return [
+            Asset(**{k: v for k, v in item.items() if k in Asset.model_fields})
+            for item in assets_data
+        ]
+    except Exception:
+        return assets

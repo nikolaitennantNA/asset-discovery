@@ -52,8 +52,8 @@ async def run_qa(
             save_discovered_urls(conn, issuer_id, url_dicts)
         finally:
             conn.close()
-        pages = await run_scrape(issuer_id, url_dicts, config, rag_store)
-        new_assets = await run_extract(issuer_id, "", pages, config)
+        pages = await run_scrape(issuer_id, url_dicts, config, rag_store, costs=costs)
+        new_assets = await run_extract(issuer_id, "", pages, config, costs=costs)
         if new_assets:
             # Quick name-based dedup against existing assets
             existing_names = {a.asset_name.lower().strip() for a in assets if a.asset_name}

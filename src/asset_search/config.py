@@ -112,27 +112,40 @@ class Config:
     qa_model: str = ""
 
     # ── corp-profile (config.toml [profile]) ──────────────────────────────
+    # Keys mirror EnrichConfig: model (from [models].profile), web_search, web_search_model
     profile_llm: bool = False
-    profile_web: bool = False
+    profile_web_search: bool = False
     profile_web_search_model: str = ""
 
     # ── web-scraper (config.toml [scraper]) ───────────────────────────────
-    scrape_timeout_ms: int = 30_000
-    scrape_use_proxy: bool = False
-    scrape_batch_limit: int = 10
-    scrape_client_timeout_s: float = 120.0
-    scrape_strategy: str = "browser"
+    # Keys mirror ScraperConfig: base_url, batch_limit, poll_interval_s,
+    # client_timeout_s, strategy, default_timeout_ms, default_proxy
+    scraper_base_url: str = "https://api.crawl4ai.com/v1"
+    scraper_batch_limit: int = 10
+    scraper_poll_interval_s: float = 2.0
+    scraper_client_timeout_s: float = 120.0
+    scraper_strategy: str = "browser"
+    scraper_default_timeout_ms: int = 30_000
+    scraper_default_proxy: bool = False
 
     # ── doc-extractor (config.toml [extractor]) ───────────────────────────
-    extract_max_batch_tokens: int = 65_000
-    extract_max_page_tokens: int = 35_000
-    extract_overlap_tokens: int = 5_000
-    extract_max_retries: int = 2
+    # Keys mirror ExtractorConfig: max_batch_tokens, max_page_tokens,
+    # overlap_tokens, max_retries, default_concurrency
+    extractor_max_batch_tokens: int = 65_000
+    extractor_max_page_tokens: int = 35_000
+    extractor_overlap_tokens: int = 5_000
+    extractor_max_retries: int = 2
+    extractor_default_concurrency: int = 10
 
     # ── rag (config.toml [rag]) ───────────────────────────────────────────
+    # Keys mirror RAGConfig: embedding_model, embedding_dim, chunk_tokens,
+    # overlap_tokens, token_cap, embed_batch_size, retrieval_top_k,
+    # rerank_top_n, rerank_model (cohere_api_key is a secret)
     rag_embedding_model: str = "text-embedding-3-small"
     rag_embedding_dim: int = 1536
     rag_chunk_tokens: int = 512
+    rag_overlap_tokens: int = 100
+    rag_token_cap: int = 4096
     rag_embed_batch_size: int = 100
     rag_retrieval_top_k: int = 80
     rag_rerank_top_n: int = 20
@@ -147,7 +160,6 @@ class Config:
 
     # ── Pipeline caps (config.toml [pipeline]) ────────────────────────────
     max_scrape_concurrency: int = 100
-    max_extract_concurrency: int = 10
     page_stale_days: int = 30
     max_discover_tool_calls: int = 200
     max_discover_minutes: int = 15
@@ -182,28 +194,33 @@ class Config:
         self.merge_model = _resolve_str("MERGE_MODEL", models, "merge", "openai/gpt-5-mini")
         self.qa_model = _resolve_str("QA_MODEL", models, "qa", bedrock_default)
 
-        # ── corp-profile ──────────────────────────────────────────────────
+        # ── corp-profile (keys mirror EnrichConfig) ─────────────────────
         self.profile_llm = _resolve_bool("PROFILE_LLM", profile, "llm", False)
-        self.profile_web = _resolve_bool("PROFILE_WEB", profile, "web", False)
+        self.profile_web_search = _resolve_bool("PROFILE_WEB_SEARCH", profile, "web_search", False)
         self.profile_web_search_model = _resolve_str("PROFILE_WEB_SEARCH_MODEL", profile, "web_search_model", "")
 
-        # ── web-scraper ───────────────────────────────────────────────────
-        self.scrape_timeout_ms = _resolve_int("SCRAPE_TIMEOUT_MS", scraper, "default_timeout_ms", 30_000)
-        self.scrape_use_proxy = _resolve_bool("SCRAPE_USE_PROXY", scraper, "default_proxy", False)
-        self.scrape_batch_limit = _resolve_int("SCRAPE_BATCH_LIMIT", scraper, "batch_limit", 10)
-        self.scrape_client_timeout_s = _resolve_float("SCRAPE_CLIENT_TIMEOUT_S", scraper, "client_timeout_s", 120.0)
-        self.scrape_strategy = _resolve_str("SCRAPE_STRATEGY", scraper, "strategy", "browser")
+        # ── web-scraper (keys mirror ScraperConfig) ──────────────────────
+        self.scraper_base_url = _resolve_str("SCRAPER_BASE_URL", scraper, "base_url", "https://api.crawl4ai.com/v1")
+        self.scraper_batch_limit = _resolve_int("SCRAPER_BATCH_LIMIT", scraper, "batch_limit", 10)
+        self.scraper_poll_interval_s = _resolve_float("SCRAPER_POLL_INTERVAL_S", scraper, "poll_interval_s", 2.0)
+        self.scraper_client_timeout_s = _resolve_float("SCRAPER_CLIENT_TIMEOUT_S", scraper, "client_timeout_s", 120.0)
+        self.scraper_strategy = _resolve_str("SCRAPER_STRATEGY", scraper, "strategy", "browser")
+        self.scraper_default_timeout_ms = _resolve_int("SCRAPER_DEFAULT_TIMEOUT_MS", scraper, "default_timeout_ms", 30_000)
+        self.scraper_default_proxy = _resolve_bool("SCRAPER_DEFAULT_PROXY", scraper, "default_proxy", False)
 
-        # ── doc-extractor ─────────────────────────────────────────────────
-        self.extract_max_batch_tokens = _resolve_int("EXTRACT_MAX_BATCH_TOKENS", extractor, "max_batch_tokens", 120_000)
-        self.extract_max_page_tokens = _resolve_int("EXTRACT_MAX_PAGE_TOKENS", extractor, "max_page_tokens", 60_000)
-        self.extract_overlap_tokens = _resolve_int("EXTRACT_OVERLAP_TOKENS", extractor, "overlap_tokens", 5_000)
-        self.extract_max_retries = _resolve_int("EXTRACT_MAX_RETRIES", extractor, "max_retries", 2)
+        # ── doc-extractor (keys mirror ExtractorConfig) ──────────────────
+        self.extractor_max_batch_tokens = _resolve_int("EXTRACTOR_MAX_BATCH_TOKENS", extractor, "max_batch_tokens", 120_000)
+        self.extractor_max_page_tokens = _resolve_int("EXTRACTOR_MAX_PAGE_TOKENS", extractor, "max_page_tokens", 60_000)
+        self.extractor_overlap_tokens = _resolve_int("EXTRACTOR_OVERLAP_TOKENS", extractor, "overlap_tokens", 5_000)
+        self.extractor_max_retries = _resolve_int("EXTRACTOR_MAX_RETRIES", extractor, "max_retries", 2)
+        self.extractor_default_concurrency = _resolve_int("EXTRACTOR_DEFAULT_CONCURRENCY", extractor, "default_concurrency", 10)
 
-        # ── rag ───────────────────────────────────────────────────────────
+        # ── rag (keys mirror RAGConfig) ──────────────────────────────────
         self.rag_embedding_model = _resolve_str("RAG_EMBEDDING_MODEL", rag, "embedding_model", "text-embedding-3-small")
         self.rag_embedding_dim = _resolve_int("RAG_EMBEDDING_DIM", rag, "embedding_dim", 1536)
         self.rag_chunk_tokens = _resolve_int("RAG_CHUNK_TOKENS", rag, "chunk_tokens", 512)
+        self.rag_overlap_tokens = _resolve_int("RAG_OVERLAP_TOKENS", rag, "overlap_tokens", 100)
+        self.rag_token_cap = _resolve_int("RAG_TOKEN_CAP", rag, "token_cap", 4096)
         self.rag_embed_batch_size = _resolve_int("RAG_EMBED_BATCH_SIZE", rag, "embed_batch_size", 100)
         self.rag_retrieval_top_k = _resolve_int("RAG_RETRIEVAL_TOP_K", rag, "retrieval_top_k", 80)
         self.rag_rerank_top_n = _resolve_int("RAG_RERANK_TOP_N", rag, "rerank_top_n", 20)
@@ -218,7 +235,6 @@ class Config:
 
         # ── Pipeline caps ─────────────────────────────────────────────────
         self.max_scrape_concurrency = _resolve_int("MAX_SCRAPE_CONCURRENCY", pipeline, "max_scrape_concurrency", 100)
-        self.max_extract_concurrency = _resolve_int("MAX_EXTRACT_CONCURRENCY", pipeline, "max_extract_concurrency", 10)
         self.page_stale_days = _resolve_int("PAGE_STALE_DAYS", pipeline, "page_stale_days", 30)
         self.max_discover_tool_calls = _resolve_int("MAX_DISCOVER_TOOL_CALLS", pipeline, "max_discover_tool_calls", 200)
         self.max_discover_minutes = _resolve_int("MAX_DISCOVER_MINUTES", pipeline, "max_discover_minutes", 15)
@@ -231,22 +247,24 @@ class Config:
         """Build a web-scraper ScraperConfig from this master config."""
         from web_scraper import ScraperConfig
         return ScraperConfig(
-            batch_limit=self.scrape_batch_limit,
-            client_timeout_s=self.scrape_client_timeout_s,
-            strategy=self.scrape_strategy,
-            default_timeout_ms=self.scrape_timeout_ms,
-            default_proxy=self.scrape_use_proxy,
+            base_url=self.scraper_base_url,
+            batch_limit=self.scraper_batch_limit,
+            poll_interval_s=self.scraper_poll_interval_s,
+            client_timeout_s=self.scraper_client_timeout_s,
+            strategy=self.scraper_strategy,
+            default_timeout_ms=self.scraper_default_timeout_ms,
+            default_proxy=self.scraper_default_proxy,
         )
 
     def extractor_config(self):
         """Build a doc-extractor ExtractorConfig from this master config."""
         from doc_extractor import ExtractorConfig
         return ExtractorConfig(
-            max_batch_tokens=self.extract_max_batch_tokens,
-            max_page_tokens=self.extract_max_page_tokens,
-            overlap_tokens=self.extract_overlap_tokens,
-            max_retries=self.extract_max_retries,
-            default_concurrency=self.max_extract_concurrency,
+            max_batch_tokens=self.extractor_max_batch_tokens,
+            max_page_tokens=self.extractor_max_page_tokens,
+            overlap_tokens=self.extractor_overlap_tokens,
+            max_retries=self.extractor_max_retries,
+            default_concurrency=self.extractor_default_concurrency,
         )
 
     def rag_config(self):
@@ -256,6 +274,8 @@ class Config:
             embedding_model=self.rag_embedding_model,
             embedding_dim=self.rag_embedding_dim,
             chunk_tokens=self.rag_chunk_tokens,
+            overlap_tokens=self.rag_overlap_tokens,
+            token_cap=self.rag_token_cap,
             embed_batch_size=self.rag_embed_batch_size,
             retrieval_top_k=self.rag_retrieval_top_k,
             rerank_top_n=self.rag_rerank_top_n,
@@ -268,7 +288,7 @@ class Config:
         from corp_profile.enrich import EnrichConfig
         return EnrichConfig(
             model=self.profile_model,
-            web_search=self.profile_web,
+            web_search=self.profile_web_search,
             web_search_model=self.profile_web_search_model or None,
             aws_region=self.aws_region or None,
             aws_profile=self.aws_profile or None,

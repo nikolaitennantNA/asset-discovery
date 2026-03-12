@@ -87,7 +87,7 @@ async def run_extract(
         extractor_usage = ExtractorUsage()
         new_assets = await extract(
             documents=documents, schema=Asset, prompt=prompt,
-            model=config.extract_model, max_concurrency=config.max_extract_concurrency,
+            model=config.extract_model, max_concurrency=config.extractor_default_concurrency,
             config=config.extractor_config(),
             usage=extractor_usage,
         )

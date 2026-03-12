@@ -49,7 +49,7 @@ def _build_search_tools(config: Config) -> tuple[list, list]:
         builtin_tools.append(WebSearchTool())
     elif provider == "exa" and config.exa_api_key:
         toolsets.append(MCPServerStdio(
-            "npx", ["-y", "@anthropic/exa-mcp-server"],
+            "npx", ["-y", "exa-mcp-server"],
             env={"EXA_API_KEY": config.exa_api_key},
         ))
     elif provider == "brave":

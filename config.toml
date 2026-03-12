@@ -1,12 +1,19 @@
 # asset-search-v2 master config
 #
 # Secrets (API keys, DB URLs) go in .env — never here.
-# Everything else lives here. Env vars override any value below.
+# Only override values you want to change — everything has sensible defaults.
+# Env vars override any value below.
 #
 # Resolution order per field: env var > this file > hardcoded default.
+#
+# For the full list of keys per section, see the matching sub-module config:
+#   [profile]   → corp_profile.enrich.EnrichConfig
+#   [scraper]   → web_scraper.config.ScraperConfig
+#   [extractor] → doc_extractor.config.ExtractorConfig
+#   [rag]       → rag.config.RAGConfig
 
 # ── Models ────────────────────────────────────────────────────────────────────
-# Any litellm-supported model string: "openai/gpt-5-mini", "bedrock/us.anthropic.claude-...", etc.
+# Any litellm-supported model string.
 [models]
 profile  = "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0"
 discover = "bedrock/us.anthropic.claude-opus-4-6-20250219-v1:0"
@@ -16,53 +23,36 @@ qa       = "bedrock/us.anthropic.claude-opus-4-6-20250219-v1:0"
 
 # ── corp-profile ──────────────────────────────────────────────────────────────
 [profile]
-llm              = false   # run LLM enrichment (clean, refine estimates)
-web              = false   # add web search during enrichment (requires llm = true)
-# web_search_model = ""   # defaults to profile model
+llm = false         # run LLM enrichment (clean, refine estimates)
+web_search = false   # web search during enrichment (requires llm = true)
 
 # ── web-scraper ───────────────────────────────────────────────────────────────
-[scraper]
-default_timeout_ms = 30_000
-default_proxy      = false
-batch_limit        = 10
-client_timeout_s   = 120.0
-strategy           = "browser"
+# [scraper]
+# default_timeout_ms = 30_000
+# default_proxy = false
 
 # ── doc-extractor ─────────────────────────────────────────────────────────────
-# max_batch_tokens: how many tokens of page content per extraction call.
-# Default 120K is safe for Opus 4.6 (200K context). If using GPT-5.2 (400K)
-# or GPT-5.4/Opus 1M beta, increase to 300K+.
+# Increase max_batch_tokens for models with larger context (e.g. 300K+ for GPT-5.2).
 [extractor]
 max_batch_tokens = 120_000
-max_page_tokens  = 60_000
-overlap_tokens   = 5_000
-max_retries      = 2
 
 # ── rag ───────────────────────────────────────────────────────────────────────
-[rag]
-embedding_model  = "text-embedding-3-small"
-embedding_dim    = 1536
-chunk_tokens     = 512
-embed_batch_size = 100
-retrieval_top_k  = 80
-rerank_top_n     = 20
-rerank_model     = "rerank-v3.5"
+# [rag]
+# All defaults are fine for text-embedding-3-small + rerank-v3.5
 
-# ── AWS (shared across all Bedrock-based models) ─────────────────────────────
+# ── AWS ───────────────────────────────────────────────────────────────────────
 [aws]
 region = "us-east-2"
-# profile = ""
 
 # ── Search ────────────────────────────────────────────────────────────────────
 [search]
-provider = "exa"    # exa | brave | tavily | openai
+provider = "exa"  # exa | brave | tavily | openai
 
 # ── Pipeline caps ─────────────────────────────────────────────────────────────
 [pipeline]
-max_scrape_concurrency  = 100
-max_extract_concurrency = 10
-page_stale_days         = 30
+max_scrape_concurrency = 100
+page_stale_days = 30
 max_discover_tool_calls = 200
-max_discover_minutes    = 15
-max_qa_iterations       = 2
-max_urls_per_run        = 5000
+max_discover_minutes = 15
+max_qa_iterations = 2
+max_urls_per_run = 5000
