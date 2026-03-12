@@ -43,7 +43,7 @@ async def run(
         profile = build_profile(isin)
 
     # Optionally enrich the DB profile with LLM-based estimate refinement
-    if config.profile_enrich:
+    if config.profile_llm:
         from corp_profile.enrich import EnrichConfig, enrich_profile
         enrich_cfg = config.profile_enrich_config()
         profile = enrich_profile(profile, enrich_cfg)

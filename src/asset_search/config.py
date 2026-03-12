@@ -95,8 +95,8 @@ class Config:
     qa_model: str = ""
 
     # ── corp-profile (config.toml [profile]) ──────────────────────────────
-    profile_enrich: bool = False
-    profile_web_search: bool = False
+    profile_llm: bool = False
+    profile_web: bool = False
     profile_web_search_model: str = ""
 
     # ── web-scraper (config.toml [scraper]) ───────────────────────────────
@@ -166,8 +166,8 @@ class Config:
         self.qa_model = _resolve_str("QA_MODEL", models, "qa", bedrock_default)
 
         # ── corp-profile ──────────────────────────────────────────────────
-        self.profile_enrich = _resolve_bool("PROFILE_ENRICH", profile, "enrich", False)
-        self.profile_web_search = _resolve_bool("PROFILE_WEB_SEARCH", profile, "web_search", False)
+        self.profile_llm = _resolve_bool("PROFILE_LLM", profile, "llm", False)
+        self.profile_web = _resolve_bool("PROFILE_WEB", profile, "web", False)
         self.profile_web_search_model = _resolve_str("PROFILE_WEB_SEARCH_MODEL", profile, "web_search_model", "")
 
         # ── web-scraper ───────────────────────────────────────────────────
@@ -251,7 +251,7 @@ class Config:
         from corp_profile.enrich import EnrichConfig
         return EnrichConfig(
             model=self.profile_model,
-            web_search=self.profile_web_search,
+            web_search=self.profile_web,
             web_search_model=self.profile_web_search_model or None,
             aws_region=self.aws_region or None,
             aws_profile=self.aws_profile or None,

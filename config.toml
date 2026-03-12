@@ -16,8 +16,8 @@ qa       = "bedrock/us.anthropic.claude-opus-4-6-20250219-v1:0"
 
 # ── corp-profile ──────────────────────────────────────────────────────────────
 [profile]
-enrich           = false   # set true to run LLM-based profile enrichment after DB lookup
-web_search       = false
+llm              = false   # run LLM enrichment (clean, refine estimates)
+web              = false   # add web search during enrichment (requires llm = true)
 # web_search_model = ""   # defaults to profile model
 
 # ── web-scraper ───────────────────────────────────────────────────────────────
