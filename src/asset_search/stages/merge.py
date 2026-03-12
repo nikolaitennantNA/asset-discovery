@@ -10,6 +10,7 @@ from typing import Any
 import litellm
 
 from ..config import Config
+from ..cost import CostTracker
 from ..db import get_connection, get_discovered_assets, save_discovered_assets
 from ..display import show_stage
 from ..models import Asset
@@ -38,6 +39,7 @@ Return JSON array of objects with all Asset fields plus matched_asset_id.
 
 async def run_merge(
     issuer_id: str, extracted_assets: list[Asset], config: Config, industry_code: str = "",
+    costs: CostTracker | None = None,
 ) -> list[Asset]:
     """Dedup extracted assets against each other + existing ALD assets."""
     show_stage(5, "Merging and deduplicating")
@@ -54,7 +56,7 @@ async def run_merge(
 
         for i in range(0, len(extracted_assets), batch_size):
             batch = extracted_assets[i : i + batch_size]
-            merged = await _merge_batch(batch, existing, final_assets, config.merge_model)
+            merged = await _merge_batch(batch, existing, final_assets, config.merge_model, costs)
 
             for asset in merged:
                 if not asset.asset_id:
@@ -77,6 +79,7 @@ async def run_merge(
 async def _merge_batch(
     batch: list[Asset], existing: list[dict[str, Any]],
     prior_merged: list[Asset], model: str,
+    costs: CostTracker | None = None,
 ) -> list[Asset]:
     batch_json = json.dumps([a.model_dump() for a in batch], default=str)
     existing_summary = json.dumps(
@@ -110,6 +113,9 @@ async def _merge_batch(
         ],
         response_format={"type": "json_object"},
     )
+
+    if costs:
+        costs.track_litellm(response, model, "merge")
 
     try:
         result = json.loads(response.choices[0].message.content)

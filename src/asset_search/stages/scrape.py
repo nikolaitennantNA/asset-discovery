@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from web_scraper import scrape, ScrapeConfig
+from web_scraper import scrape, ScrapeConfig, Usage as ScraperUsage
 
 from ..config import Config
+from ..cost import CostTracker
 from ..db import get_connection, get_cached_page, save_scraped_page, url_hash
 from ..display import show_stage
 
@@ -36,7 +37,7 @@ def _config_from_notes(notes: str | None) -> ScrapeConfig:
 
 async def run_scrape(
     issuer_id: str, discovered_urls: list[dict[str, Any]], config: Config,
-    rag_store=None,
+    rag_store=None, costs: CostTracker | None = None,
 ) -> list[dict[str, Any]]:
     """Scrape URLs, skip cached fresh pages. Returns list of page dicts."""
     show_stage(3, "Scraping pages")
@@ -60,6 +61,7 @@ async def run_scrape(
                 configs[url_row["url"]] = cfg
 
         scraped = []
+        scraper_usage = ScraperUsage()
         if to_scrape:
             scraped = await scrape(
                 urls=[u["url"] for u in to_scrape],
@@ -67,6 +69,7 @@ async def run_scrape(
                 configs=configs,
                 max_concurrency=config.max_scrape_concurrency,
                 scraper_config=config.scraper_config(),
+                usage=scraper_usage,
             )
 
         all_pages: list[dict[str, Any]] = list(cached_pages)
@@ -80,6 +83,9 @@ async def run_scrape(
                     "page_id": pid, "url": page.url,
                     "markdown": page.markdown, "signals": page.signals,
                 })
+
+        if costs and scraper_usage.pages_crawled:
+            costs.track_crawl4ai(scraper_usage.pages_crawled)
 
         if rag_store and all_pages:
             rag_docs = [

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from doc_extractor import extract, Document
+from doc_extractor import extract, Document, Usage as ExtractorUsage
 
 from ..config import Config
+from ..cost import CostTracker
 from ..db import get_connection, get_extraction_result, save_extraction_result, url_hash
 from ..display import show_stage
 from ..models import Asset
@@ -38,6 +39,7 @@ Only extract assets you're confident are real physical locations.
 async def run_extract(
     issuer_id: str, company_name: str, pages: list[dict[str, Any]],
     config: Config, existing_assets_summary: str | None = None,
+    costs: CostTracker | None = None,
 ) -> list[Asset]:
     """Extract assets from scraped pages, skipping cached extractions."""
     show_stage(4, "Extracting assets")
@@ -76,11 +78,20 @@ async def run_extract(
 
         prompt = EXTRACT_PROMPT_TEMPLATE.format(company=company_name, ald_summary=ald_summary)
 
+        extractor_usage = ExtractorUsage()
         new_assets = await extract(
             documents=documents, schema=Asset, prompt=prompt,
             model=config.extract_model, max_concurrency=config.max_extract_concurrency,
             config=config.extractor_config(),
+            usage=extractor_usage,
         )
+        if costs:
+            costs.track_llm(
+                config.extract_model,
+                extractor_usage.input_tokens,
+                extractor_usage.output_tokens,
+                "extract",
+            )
 
         # Save per-page extraction results
         by_page: dict[str, list[Asset]] = {}

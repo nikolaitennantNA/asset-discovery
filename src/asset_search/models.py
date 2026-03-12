@@ -10,7 +10,7 @@ class Asset(BaseModel):
 
     # --- TREX fields ---
     asset_name: str
-    entity_name: str = ""
+    entity_name: str
     entity_isin: str = ""
     parent_name: str = ""
     parent_isin: str = ""

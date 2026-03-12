@@ -33,6 +33,9 @@ async def run(
     costs = CostTracker()
 
     # --- Stage 1: Profile ---
+    from .display import show_stage
+    show_stage(1, "Profiling")
+
     from corp_profile.profile import build_context_document
 
     if profile_file:
@@ -63,7 +66,7 @@ async def run(
     # --- Stage 2: Discover ---
     from .stages.discover import run_discover
 
-    discovered_urls = await run_discover(issuer_id, context_doc, config)
+    discovered_urls = await run_discover(issuer_id, context_doc, config, costs)
     stages_run.append("discover")
 
     if stop_after == "discover":
@@ -80,7 +83,7 @@ async def run(
     # --- Stage 3: Scrape ---
     from .stages.scrape import run_scrape
 
-    pages = await run_scrape(issuer_id, discovered_urls, config, rag_store)
+    pages = await run_scrape(issuer_id, discovered_urls, config, rag_store, costs)
     stages_run.append("scrape")
 
     if stop_after == "scrape":
@@ -90,7 +93,7 @@ async def run(
     from .stages.extract import run_extract
 
     existing_summary = _build_existing_summary(profile)
-    assets = await run_extract(issuer_id, profile.legal_name, pages, config, existing_summary)
+    assets = await run_extract(issuer_id, profile.legal_name, pages, config, existing_summary, costs)
     stages_run.append("extract")
 
     if stop_after == "extract":
@@ -99,7 +102,7 @@ async def run(
     # --- Stage 5: Merge ---
     from .stages.merge import run_merge
 
-    assets = await run_merge(issuer_id, assets, config, industry_code=profile.primary_industry)
+    assets = await run_merge(issuer_id, assets, config, industry_code=profile.primary_industry, costs=costs)
     stages_run.append("merge")
 
     if stop_after == "merge":
@@ -108,12 +111,21 @@ async def run(
     # --- Stage 6: QA ---
     from .stages.qa import run_qa
 
-    qa_report = await run_qa(issuer_id, context_doc, assets, config, rag_store)
+    qa_report = await run_qa(issuer_id, context_doc, assets, config, rag_store, costs)
     stages_run.append("qa")
 
+    # Persist QA report (including coverage flags) to DB
+    from .db import get_connection, save_qa_report
+    conn = get_connection(config)
+    try:
+        save_qa_report(conn, issuer_id, qa_report.model_dump())
+    finally:
+        conn.close()
+
     # --- Display results ---
-    from .display import show_assets_table, show_cost_summary
+    from .display import show_assets_table, show_cost_summary, show_coverage_flags
     show_assets_table(assets)
+    show_coverage_flags(qa_report)
     elapsed = time.monotonic() - start
     show_cost_summary(
         stages_run=stages_run, url_count=len(discovered_urls),

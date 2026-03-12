@@ -164,6 +164,32 @@ def show_assets_table(
     console.print(table)
 
 
+def show_coverage_flags(qa_report: Any) -> None:
+    """Display QA coverage flags if any exist."""
+    if qa_report is None:
+        return
+    flags = getattr(qa_report, "coverage_flags", None) or []
+    if not flags:
+        return
+    severity_style = {"high": "red", "medium": "yellow", "low": "dim"}
+    table = Table(
+        title="[bold]Coverage Flags[/bold]",
+        border_style="yellow",
+    )
+    table.add_column("Severity", style="bold")
+    table.add_column("Type")
+    table.add_column("Description", max_width=60)
+    for flag in flags:
+        sev = getattr(flag, "severity", "medium")
+        style = severity_style.get(sev, "white")
+        table.add_row(
+            f"[{style}]{sev}[/{style}]",
+            getattr(flag, "flag_type", ""),
+            getattr(flag, "description", ""),
+        )
+    console.print(table)
+
+
 def show_cost_summary(
     stages_run: list[str] | None = None,
     url_count: int = 0,

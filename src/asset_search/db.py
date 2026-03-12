@@ -108,6 +108,28 @@ def save_extraction_result(
     conn.commit()
 
 
+def save_qa_report(
+    conn: psycopg.Connection, issuer_id: str, report_json: dict[str, Any],
+) -> None:
+    """Upsert QA report (including coverage flags) for an issuer."""
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS qa_results (
+               issuer_id TEXT PRIMARY KEY,
+               report JSONB NOT NULL,
+               created_at TIMESTAMPTZ DEFAULT NOW()
+           )""",
+    )
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO qa_results (issuer_id, report, created_at)
+               VALUES (%s, %s, NOW())
+               ON CONFLICT (issuer_id) DO UPDATE SET
+                 report = EXCLUDED.report, created_at = EXCLUDED.created_at""",
+            (issuer_id, psycopg.types.json.Json(report_json)),
+        )
+    conn.commit()
+
+
 def get_discovered_assets(conn: psycopg.Connection, issuer_id: str) -> list[dict[str, Any]]:
     with conn.cursor() as cur:
         cur.execute("SELECT * FROM discovered_assets WHERE issuer_id = %s", (issuer_id,))

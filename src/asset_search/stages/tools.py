@@ -8,16 +8,19 @@ from typing import Any
 import httpx
 
 from ..config import Config
+from ..cost import CostTracker
 from ..db import get_connection, get_discovered_urls, save_discovered_urls
 
 _config: Config | None = None
 _issuer_id: str = ""
+_costs: CostTracker | None = None
 
 
-def init_tools(config: Config, issuer_id: str) -> None:
-    global _config, _issuer_id
+def init_tools(config: Config, issuer_id: str, costs: CostTracker | None = None) -> None:
+    global _config, _issuer_id, _costs
     _config = config
     _issuer_id = issuer_id
+    _costs = costs
 
 
 def _get_conn():
@@ -27,7 +30,10 @@ def _get_conn():
 async def fetch_sitemap(domain: str) -> list[dict[str, str]]:
     """Fetch and parse sitemaps for a domain.
 
-    Checks robots.txt for sitemap locations, then falls back to common paths.
+    1. Check robots.txt for sitemap locations
+    2. Try common XML sitemap paths via plain HTTP
+    3. If WAF-blocked, fall back to crawl_page via Crawl4AI
+    4. Probe HTML sitemaps at /sitemap and /sitemap.html
     Handles sitemap indexes recursively.
 
     Args:
@@ -37,6 +43,7 @@ async def fetch_sitemap(domain: str) -> list[dict[str, str]]:
     """
     urls: list[dict[str, str]] = []
     sitemap_locs: list[str] = []
+    waf_blocked = False
 
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
         try:
@@ -45,8 +52,10 @@ async def fetch_sitemap(domain: str) -> list[dict[str, str]]:
                 for line in resp.text.splitlines():
                     if line.lower().startswith("sitemap:"):
                         sitemap_locs.append(line.split(":", 1)[1].strip())
+            elif resp.status_code == 403:
+                waf_blocked = True
         except Exception:
-            pass
+            waf_blocked = True
 
         if not sitemap_locs:
             sitemap_locs = [
@@ -62,6 +71,9 @@ async def fetch_sitemap(domain: str) -> list[dict[str, str]]:
             visited.add(loc)
             try:
                 resp = await client.get(loc)
+                if resp.status_code == 403:
+                    waf_blocked = True
+                    continue
                 if resp.status_code != 200:
                     continue
                 root = ET.fromstring(resp.text)
@@ -80,6 +92,31 @@ async def fetch_sitemap(domain: str) -> list[dict[str, str]]:
                         urls.append(entry)
             except Exception:
                 continue
+
+    # Crawl4AI fallback if WAF-blocked and no URLs found via plain HTTP
+    if waf_blocked and not urls:
+        result = await crawl_page(f"https://{domain}/sitemap.xml")
+        if result.get("markdown"):
+            try:
+                root = ET.fromstring(result["markdown"])
+                ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+                for url_elem in root.findall("sm:url", ns):
+                    loc_text = url_elem.findtext("sm:loc", namespaces=ns)
+                    if loc_text:
+                        urls.append({"url": loc_text})
+            except ET.ParseError:
+                pass
+
+    # Probe HTML sitemaps at /sitemap and /sitemap.html
+    for path in ("/sitemap", "/sitemap.html"):
+        result = await crawl_page(f"https://{domain}{path}")
+        md = result.get("markdown", "")
+        if md and not result.get("error"):
+            for link in result.get("links_internal", []):
+                link_url = link if isinstance(link, str) else link.get("url", "")
+                if link_url and link_url not in {u["url"] for u in urls}:
+                    urls.append({"url": link_url})
+
     return urls
 
 
@@ -107,6 +144,8 @@ async def crawl_page(url: str) -> dict[str, Any]:
             data = resp.json()
             if not data.get("success"):
                 return {"markdown": "", "error": data.get("error", "Unknown error")}
+            if _costs:
+                _costs.track_crawl4ai(1)
             links = data.get("links", {})
             return {
                 "markdown": data.get("markdown", ""),
@@ -136,8 +175,21 @@ async def map_domain(domain: str, search: str | None = None) -> list[dict[str, s
                 f"https://{domain}",
                 search=search,
             )
+            if _costs:
+                _costs.track_firecrawl(1)
             links = getattr(result, "links", None) or []
-            return [{"url": u} if isinstance(u, str) else {"url": str(u)} for u in links]
+            out = []
+            for u in links:
+                if isinstance(u, str):
+                    out.append({"url": u})
+                else:
+                    entry: dict[str, str] = {"url": getattr(u, "url", str(u))}
+                    if getattr(u, "title", None):
+                        entry["title"] = u.title
+                    if getattr(u, "description", None):
+                        entry["description"] = u.description
+                    out.append(entry)
+            return out
     except Exception:
         return []
 
