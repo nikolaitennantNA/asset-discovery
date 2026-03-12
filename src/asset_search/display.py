@@ -54,13 +54,13 @@ def show_error(msg: str) -> None:
 
 def show_intro_panel(
     company_name: str,
-    isin: str,
+    issuer_id: str,
     profile=None,
     website: str = "",
     description: str = "",
 ) -> None:
     """Display the styled intro box with company info."""
-    lines = [f"[bold]ISIN:[/bold] [dim]{isin}[/dim]"]
+    lines = [f"[bold]Issuer ID:[/bold] [dim]{issuer_id}[/dim]"]
     if profile is not None:
         if hasattr(profile, "jurisdiction") and profile.jurisdiction:
             lines.append(f"[bold]Jurisdiction:[/bold] [dim]{profile.jurisdiction}[/dim]")

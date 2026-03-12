@@ -9,7 +9,6 @@ from typing import Any
 
 from pydantic_ai import Agent, UsageLimits
 from pydantic_ai.exceptions import UsageLimitExceeded
-from pydantic_ai.mcp import MCPServerStdio
 
 from ..config import Config, _to_pydantic_ai_model
 from ..cost import CostTracker
@@ -36,11 +35,11 @@ def _truncate_context(text: str, max_tokens: int = _CONTEXT_TOKEN_CAP) -> str:
 
 
 def _build_search_tools(config: Config) -> tuple[list, list]:
-    """Build MCP toolsets and builtin tools based on search_provider config.
+    """Build search tool functions and builtin tools based on search_provider config.
 
-    Returns (toolsets, builtin_tools) for pydantic-ai Agent.
+    Returns (tool_functions, builtin_tools) for pydantic-ai Agent.
     """
-    toolsets: list = []
+    tool_functions: list = []
     builtin_tools: list = []
     provider = config.search_provider
 
@@ -48,26 +47,61 @@ def _build_search_tools(config: Config) -> tuple[list, list]:
         from pydantic_ai.tools import WebSearchTool
         builtin_tools.append(WebSearchTool())
     elif provider == "exa" and config.exa_api_key:
-        toolsets.append(MCPServerStdio(
-            "npx", ["-y", "exa-mcp-server"],
-            env={"EXA_API_KEY": config.exa_api_key},
-        ))
+        from exa_py import Exa
+        exa_client = Exa(api_key=config.exa_api_key)
+
+        def web_search(query: str, num_results: int = 10) -> list[dict]:
+            """Search the web using Exa. Returns list of results with title, url, and text."""
+            results = exa_client.search(
+                query,
+                num_results=num_results,
+                contents={"text": {"max_characters": 3000}},
+            )
+            return [
+                {"title": r.title, "url": r.url, "text": getattr(r, "text", "")}
+                for r in results.results
+            ]
+
+        tool_functions.append(web_search)
     elif provider == "brave":
         api_key = os.environ.get("BRAVE_API_KEY", "")
         if api_key:
-            toolsets.append(MCPServerStdio(
-                "npx", ["-y", "@anthropic/brave-search-mcp-server"],
-                env={"BRAVE_API_KEY": api_key},
-            ))
+            import httpx as _httpx
+
+            def web_search(query: str, count: int = 10) -> list[dict]:
+                """Search the web using Brave Search API."""
+                resp = _httpx.get(
+                    "https://api.search.brave.com/res/v1/web/search",
+                    headers={"X-Subscription-Token": api_key, "Accept": "application/json"},
+                    params={"q": query, "count": count},
+                )
+                resp.raise_for_status()
+                return [
+                    {"title": r["title"], "url": r["url"], "description": r.get("description", "")}
+                    for r in resp.json().get("web", {}).get("results", [])
+                ]
+
+            tool_functions.append(web_search)
     elif provider == "tavily":
         api_key = os.environ.get("TAVILY_API_KEY", "")
         if api_key:
-            toolsets.append(MCPServerStdio(
-                "npx", ["-y", "@anthropic/tavily-mcp-server"],
-                env={"TAVILY_API_KEY": api_key},
-            ))
+            import httpx as _httpx
 
-    return toolsets, builtin_tools
+            def web_search(query: str, max_results: int = 10) -> list[dict]:
+                """Search the web using Tavily Search API."""
+                resp = _httpx.post(
+                    "https://api.tavily.com/search",
+                    json={"api_key": api_key, "query": query, "max_results": max_results},
+                )
+                resp.raise_for_status()
+                return [
+                    {"title": r.get("title", ""), "url": r["url"], "content": r.get("content", "")}
+                    for r in resp.json().get("results", [])
+                ]
+
+            tool_functions.append(web_search)
+
+    return tool_functions, builtin_tools
 
 
 async def run_discover(
@@ -89,7 +123,7 @@ async def run_discover(
     context_doc = _truncate_context(context_doc)
     system_prompt = f"{context_doc}\n\n---\n\n{DISCOVER_SYSTEM}"
 
-    toolsets, builtin_tools = _build_search_tools(config)
+    search_tools, builtin_tools = _build_search_tools(config)
 
     agent = Agent(
         _to_pydantic_ai_model(config.discover_model),
@@ -100,8 +134,7 @@ async def run_discover(
             tools.map_domain,
             tools.save_urls,
             tools.get_saved_urls,
-        ] + builtin_tools,
-        toolsets=toolsets or None,
+        ] + search_tools + builtin_tools,
     )
 
     start = time.monotonic()

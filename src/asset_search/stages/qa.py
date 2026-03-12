@@ -25,7 +25,7 @@ async def run_qa(
     asset_summary = _build_asset_summary(assets)
     system_prompt = f"{context_doc}\n\n---\n\n{QA_SYSTEM}"
 
-    toolsets, builtin_tools = _build_search_tools(config)
+    search_tools, builtin_tools = _build_search_tools(config)
 
     qa_tools = []
 
@@ -74,8 +74,7 @@ async def run_qa(
         _to_pydantic_ai_model(config.qa_model),
         system_prompt=system_prompt,
         output_type=QAReport,
-        tools=qa_tools + builtin_tools,
-        toolsets=toolsets or None,
+        tools=qa_tools + search_tools + builtin_tools,
     )
 
     qa_report = QAReport()

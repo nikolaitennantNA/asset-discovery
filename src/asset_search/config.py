@@ -63,15 +63,19 @@ def _to_pydantic_ai_model(litellm_model: str) -> str:
     """Convert a litellm model string to pydantic-ai ``provider:model`` format.
 
     pydantic-ai expects ``provider:model`` (colon-separated).  Litellm strings
-    like ``bedrock/us.anthropic.claude-…`` use slashes and are not understood
-    directly by pydantic-ai.  Prefixing with ``litellm:`` makes pydantic-ai
-    delegate to the litellm provider which knows how to route them.
+    like ``bedrock/us.anthropic.claude-…`` use slashes.  For providers with
+    native pydantic-ai support (bedrock, openai, anthropic) we convert to the
+    native ``provider:model`` format.  Everything else falls back to litellm.
     """
     # Already in pydantic-ai native format (e.g. "anthropic:claude-…")
     if ":" in litellm_model and "/" not in litellm_model.split(":")[0]:
         return litellm_model
-    # Litellm format (contains "/") — wrap for pydantic-ai
+    # Litellm slash format — convert native providers, wrap the rest
     if "/" in litellm_model:
+        provider, model = litellm_model.split("/", 1)
+        # These providers have native pydantic-ai support — use colon format
+        if provider in ("bedrock", "openai", "anthropic"):
+            return f"{provider}:{model}"
         return f"litellm:{litellm_model}"
     return litellm_model
 
@@ -177,7 +181,7 @@ class Config:
         search = toml.get("search", {})
         pipeline = toml.get("pipeline", {})
 
-        bedrock_default = "bedrock/us.anthropic.claude-opus-4-6-20250219-v1:0"
+        bedrock_default = "bedrock/us.anthropic.claude-opus-4-6-v1"
 
         # ── Secrets (env only) ────────────────────────────────────────────
         self.corpgraph_db_url = _env("CORPGRAPH_DB_URL", "postgresql://corpgraph:corpgraph@localhost:5432/corpgraph")
@@ -229,6 +233,9 @@ class Config:
         # ── AWS ───────────────────────────────────────────────────────────
         self.aws_region = _resolve_str("AWS_DEFAULT_REGION", aws, "region", "us-east-2")
         self.aws_profile = _resolve_str("AWS_PROFILE", aws, "profile", "")
+        # Ensure boto3 / pydantic-ai BedrockProvider can discover the region
+        if self.aws_region:
+            os.environ.setdefault("AWS_DEFAULT_REGION", self.aws_region)
 
         # ── Search ────────────────────────────────────────────────────────
         self.search_provider = _resolve_str("SEARCH_PROVIDER", search, "provider", "exa")
