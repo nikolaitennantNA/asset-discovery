@@ -10,6 +10,7 @@ import httpx
 from ..config import Config
 from ..cost import CostTracker
 from ..db import get_connection, get_discovered_urls, save_discovered_urls
+from ..models import DiscoveredUrl
 
 _config: Config | None = None
 _issuer_id: str = ""
@@ -202,7 +203,11 @@ async def save_urls(
 
     Args:
         issuer_id: The issuer to save URLs for. Defaults to the current run's issuer.
-        urls: List of dicts, each with keys: url (required), category (required), notes (optional).
+        urls: List of URL dicts. Required keys: url, category.
+              Optional keys: notes, strategy, proxy_mode, wait_for, js_code,
+              scan_full_page, screenshot.
+              strategy must be "http" or "browser" (or omitted for pipeline default).
+              proxy_mode must be "auto", "datacenter", or "residential" (or omitted).
 
     Returns count of URLs saved.
     """
@@ -210,14 +215,19 @@ async def save_urls(
     urls = urls or []
     if not urls:
         return 0
+    # Validate each URL through Pydantic — agent gets clear error on bad values
+    validated = []
+    for u in urls:
+        parsed = DiscoveredUrl(**u)
+        validated.append(parsed.model_dump(exclude_none=True))
     conn = _get_conn()
     try:
         existing = get_discovered_urls(conn, iid)
         budget = (_config.max_urls_per_run if _config else 5000) - len(existing)
         if budget <= 0:
             return 0
-        urls = urls[:budget]
-        return save_discovered_urls(conn, iid, urls)
+        validated = validated[:budget]
+        return save_discovered_urls(conn, iid, validated)
     finally:
         conn.close()
 

@@ -12,58 +12,25 @@ from ..db import get_connection, get_cached_page, save_scraped_page, url_hash
 from ..display import show_stage
 
 
-def _config_from_notes(notes: str | None) -> ScrapeConfig:
-    """Build per-URL ScrapeConfig from discover agent notes.
+# Fields that map directly from discovered_urls row to ScrapeConfig
+_SCRAPE_CONFIG_FIELDS = ("strategy", "proxy_mode", "wait_for", "js_code", "scan_full_page", "screenshot")
 
-    Maps human-readable notes to actual Crawl4AI Cloud API parameters.
-    Vocabulary:
-    - waf_blocked → proxy_mode="auto"
-    - wait_for:.css-selector → wait_for + strategy="browser"
-    - ajax / store_locator / dynamic / javascript → strategy="browser"
-    - js_code:... → js_code + strategy="browser"
-    - lazy_load / infinite_scroll → scan_full_page + strategy="browser"
-    - screenshot / debug → screenshot=True
-    - pdf → no special config (HTTP is fine)
+
+def _config_from_url(url_row: dict[str, Any]) -> ScrapeConfig:
+    """Build per-URL ScrapeConfig from structured fields set by the discover agent.
+
+    Reads typed fields (strategy, proxy_mode, wait_for, etc.) directly from the
+    discovered URL row. None/missing values are skipped, falling back to defaults.
     """
-    if not notes:
-        return ScrapeConfig()
-    notes_lower = notes.lower()
     kwargs: dict = {}
-
-    # WAF-blocked sites need proxy auto-escalation
-    if "waf_blocked" in notes_lower:
-        kwargs["proxy_mode"] = "auto"
-
-    # Keywords that require browser rendering
-    browser_keywords = ("ajax", "store_locator", "dynamic", "javascript")
-    if any(kw in notes_lower for kw in browser_keywords):
-        kwargs["strategy"] = "browser"
-
-    # wait_for selector — implies browser
-    if "wait_for:" in notes_lower:
-        for part in notes.split():
-            if part.lower().startswith("wait_for:"):
-                kwargs["wait_for"] = part.split(":", 1)[1]
-                kwargs["strategy"] = "browser"
-                break
-
-    # js_code pass-through — implies browser
-    if "js_code:" in notes_lower:
-        for part in notes.split():
-            if part.lower().startswith("js_code:"):
-                kwargs["js_code"] = part.split(":", 1)[1]
-                kwargs["strategy"] = "browser"
-                break
-
-    # Lazy-loaded / infinite scroll pages — need full-page scan + browser
-    if "lazy_load" in notes_lower or "infinite_scroll" in notes_lower:
-        kwargs["scan_full_page"] = True
-        kwargs["strategy"] = "browser"
-
-    # Screenshot for debugging
-    if "screenshot" in notes_lower or "debug" in notes_lower:
-        kwargs["screenshot"] = True
-
+    for field in _SCRAPE_CONFIG_FIELDS:
+        val = url_row.get(field)
+        if val is not None and val != "" and val is not False:
+            kwargs[field] = val
+    # scan_full_page and screenshot are booleans — only set if True
+    for bool_field in ("scan_full_page", "screenshot"):
+        if url_row.get(bool_field) is True:
+            kwargs[bool_field] = True
     return ScrapeConfig(**kwargs) if kwargs else ScrapeConfig()
 
 
@@ -88,7 +55,7 @@ async def run_scrape(
 
         configs: dict[str, ScrapeConfig] = {}
         for url_row in to_scrape:
-            cfg = _config_from_notes(url_row.get("notes"))
+            cfg = _config_from_url(url_row)
             if cfg != ScrapeConfig():
                 configs[url_row["url"]] = cfg
 

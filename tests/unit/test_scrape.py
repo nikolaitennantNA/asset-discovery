@@ -4,63 +4,76 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from asset_search.stages.scrape import _config_from_notes, run_scrape
+from asset_search.stages.scrape import _config_from_url, run_scrape
 from asset_search.cost import CostTracker
 from web_scraper import ScrapedPage, ScrapeConfig, Usage
 
 
-# ── _config_from_notes ──────────────────────────────────────────────────────
+# ── _config_from_url ──────────────────────────────────────────────────────
 
 
-def test_config_from_notes_empty():
-    assert _config_from_notes(None) == ScrapeConfig()
-    assert _config_from_notes("") == ScrapeConfig()
+def test_config_from_url_empty():
+    """No scrape fields set — should return default ScrapeConfig."""
+    url_row = {"url": "https://a.com", "category": "facility_page"}
+    assert _config_from_url(url_row) == ScrapeConfig()
 
 
-def test_config_from_notes_waf():
-    cfg = _config_from_notes("waf_blocked")
-    assert cfg.proxy_mode == "auto"
-
-
-def test_config_from_notes_wait_for():
-    cfg = _config_from_notes("wait_for:.locations-list")
-    assert cfg.wait_for == ".locations-list"
+def test_config_from_url_strategy():
+    url_row = {"url": "https://a.com", "category": "x", "strategy": "browser"}
+    cfg = _config_from_url(url_row)
     assert cfg.strategy == "browser"
 
 
-def test_config_from_notes_combined():
-    cfg = _config_from_notes("waf_blocked wait_for:.results")
+def test_config_from_url_proxy_mode():
+    url_row = {"url": "https://a.com", "category": "x", "proxy_mode": "auto"}
+    cfg = _config_from_url(url_row)
     assert cfg.proxy_mode == "auto"
+
+
+def test_config_from_url_wait_for():
+    url_row = {"url": "https://a.com", "category": "x", "wait_for": ".results"}
+    cfg = _config_from_url(url_row)
     assert cfg.wait_for == ".results"
-    assert cfg.strategy == "browser"
 
 
-def test_config_from_notes_ajax():
-    cfg = _config_from_notes("ajax store_locator")
-    assert cfg.strategy == "browser"
+def test_config_from_url_js_code():
+    url_row = {"url": "https://a.com", "category": "x",
+               "js_code": "document.querySelector('.btn').click()"}
+    cfg = _config_from_url(url_row)
+    assert cfg.js_code == "document.querySelector('.btn').click()"
 
 
-def test_config_from_notes_lazy_load():
-    cfg = _config_from_notes("lazy_load")
+def test_config_from_url_scan_full_page():
+    url_row = {"url": "https://a.com", "category": "x", "scan_full_page": True}
+    cfg = _config_from_url(url_row)
     assert cfg.scan_full_page is True
-    assert cfg.strategy == "browser"
 
 
-def test_config_from_notes_screenshot():
-    cfg = _config_from_notes("screenshot")
+def test_config_from_url_screenshot():
+    url_row = {"url": "https://a.com", "category": "x", "screenshot": True}
+    cfg = _config_from_url(url_row)
     assert cfg.screenshot is True
 
 
-def test_config_from_notes_js_code():
-    cfg = _config_from_notes("js_code:document.querySelector('.btn').click()")
-    assert cfg.js_code == "document.querySelector('.btn').click()"
+def test_config_from_url_combined():
+    url_row = {
+        "url": "https://a.com", "category": "x",
+        "strategy": "browser", "proxy_mode": "auto",
+        "wait_for": ".results", "screenshot": True,
+    }
+    cfg = _config_from_url(url_row)
     assert cfg.strategy == "browser"
+    assert cfg.proxy_mode == "auto"
+    assert cfg.wait_for == ".results"
+    assert cfg.screenshot is True
 
 
-def test_config_from_notes_pdf():
-    """PDF notes should not change strategy — HTTP is fine for PDFs."""
-    cfg = _config_from_notes("pdf")
-    assert cfg.strategy is None
+def test_config_from_url_ignores_none_values():
+    """None values (from DB NULLs) should not be set on ScrapeConfig."""
+    url_row = {"url": "https://a.com", "category": "x",
+               "strategy": None, "proxy_mode": None, "wait_for": None}
+    cfg = _config_from_url(url_row)
+    assert cfg == ScrapeConfig()
 
 
 # ── run_scrape ──────────────────────────────────────────────────────────────
