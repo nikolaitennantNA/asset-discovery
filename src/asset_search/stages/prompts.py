@@ -88,9 +88,13 @@ These are valid scrape targets -- the scraper handles PDFs. Note "pdf" in the no
 
 ## Scraper capabilities
 
-The scraper defaults to HTTP mode (fast, no JS). When you save URLs, you can set
-structured scrape config fields to control how each URL is processed:
-- strategy: "browser" for full JS rendering, or omit for HTTP default
+The scraper defaults to browser mode (full JS rendering). Nav, header, and footer
+elements are automatically excluded, and the markdown output is cleaned of map tiles,
+keyboard shortcut tables, and other boilerplate. Coordinates and addresses are
+automatically extracted from HTML source (JSON-LD, data attributes, inline JS, meta tags)
+and injected at the top of the markdown.
+
+When you save URLs, you can set structured scrape config fields:
 - proxy_mode: "auto" for proxy escalation (WAF-blocked sites), or "datacenter"/"residential"
 - wait_for: CSS selector to wait for before capture (e.g. ".locations-list")
 - js_code: custom JavaScript to run before capture (e.g. "document.querySelector('.btn').click()")
@@ -102,20 +106,17 @@ Example:
       "url": "https://example.com/locations",
       "category": "facility_page",
       "notes": "React SPA with store locator",
-      "strategy": "browser",
       "wait_for": ".store-list"
   }])
 
 The notes field is freeform -- use it for human-readable context about the page.
-The structured fields (strategy, proxy_mode, etc.) are what the scraper actually uses.
+The structured fields (proxy_mode, wait_for, etc.) are what the scraper actually uses.
 
 ## Tools for understanding pages before saving
 
-**crawl_page(url, browser=False)** -- fetches a single page. By default uses HTTP mode
-(fast, no JS). Pass `browser=True` to get full JS rendering. Useful for comparing
-what HTTP gives you vs what browser gives you on a sample page from a prefix group.
-If HTTP returns empty/thin content but browser returns a full page, set
-`strategy="browser"` on that group's URLs.
+**crawl_page(url)** -- fetches a single page with full browser rendering.
+Uses the same config as the batch scraper (excluded tags, cleaned markdown).
+Returns markdown with coordinates/addresses pre-extracted from the HTML.
 
 **probe_urls(urls)** -- batch-probes up to 100 URLs in parallel via lightweight HTTP GET.
 Returns metadata for each URL: status code, content_type, content_length, title, server,

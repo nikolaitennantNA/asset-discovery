@@ -2499,6 +2499,9 @@ requires-dist = [
 ]
 provides-extras = ["test"]
 
+[package.metadata.requires-dev]
+dev = [{ name = "python-dotenv", specifier = ">=1.2.2" }]
+
 [[package]]
 name = "websockets"
 version = "16.0"

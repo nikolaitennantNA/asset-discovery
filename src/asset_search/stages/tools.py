@@ -125,16 +125,17 @@ async def fetch_sitemap(domain: str) -> list[dict[str, str]]:
 
 async def crawl_page(
     url: str,
-    browser: bool = False,
     proxy: str | None = None,
 ) -> dict[str, Any]:
     """Fetch a single page via Crawl4AI Cloud. Lightweight exploration tool.
 
+    Uses browser rendering with the same config as the batch scraper: excluded
+    tags (nav, footer, header), external images stripped, markdown cleaned of
+    map tiles and boilerplate. Coordinates and addresses are automatically
+    extracted from the HTML and injected at the top of the markdown.
+
     Args:
         url: The full URL to fetch and render.
-        browser: If True, use browser strategy (full JS rendering). Default is
-                 HTTP mode (faster, no JS). Use browser=True to check if a page
-                 has JS-rendered content that HTTP mode misses.
         proxy: Proxy mode — "auto" (smart escalation: direct → datacenter →
                residential), "datacenter" (2x credits), "residential" (5x
                credits), or None (direct only, 1x credits). Use "auto" for
@@ -144,14 +145,21 @@ async def crawl_page(
     """
     assert _config is not None
     from crawl4ai_cloud import AsyncWebCrawler
+    from web_scraper.markdown import clean_markdown
+    from web_scraper.signals import extract_signals, inject_signals
 
-    strategy = "browser" if browser else "http"
     # Resolve proxy to documented API format
     proxy_cfg: dict | None = None
     if proxy == "auto":
         proxy_cfg = {"use_proxy": True, "skip_direct": False}
     elif proxy in ("datacenter", "residential"):
         proxy_cfg = {"mode": proxy}
+
+    crawler_cfg = {
+        "word_count_threshold": 10,
+        "exclude_external_images": True,
+        "excluded_tags": ["nav", "footer", "header"],
+    }
 
     try:
         async with AsyncWebCrawler(
@@ -160,8 +168,9 @@ async def crawl_page(
         ) as crawler:
             result = await crawler.run(
                 url,
-                config={"word_count_threshold": 10},
-                strategy=strategy,
+                config=crawler_cfg,
+                strategy="browser",
+                browser_config={"viewport_width": 1920, "viewport_height": 1080},
                 proxy=proxy_cfg,
                 include_fields=["links", "metadata"],
             )
@@ -170,9 +179,17 @@ async def crawl_page(
             if _costs:
                 credits = result.usage.crawl.credits_used if result.usage else 0
                 _costs.track_crawl4ai(1, credits_used=credits)
+
+            raw_html = result.html or ""
             markdown = ""
             if result.markdown:
                 markdown = result.markdown.raw_markdown or ""
+            markdown = clean_markdown(markdown)
+
+            signals = extract_signals(raw_html) if raw_html else {}
+            if signals:
+                markdown = inject_signals(markdown, signals)
+
             links = result.links or {}
             return {
                 "markdown": markdown,
