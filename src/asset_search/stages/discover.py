@@ -132,6 +132,7 @@ async def run_discover(
             tools.fetch_sitemap,
             tools.crawl_page,
             tools.map_domain,
+            tools.probe_urls,
             tools.save_urls,
             tools.get_saved_urls,
         ] + search_tools + builtin_tools,
