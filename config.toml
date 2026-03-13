@@ -21,10 +21,15 @@ extract  = "bedrock/us.anthropic.claude-opus-4-6-v1"
 merge    = "openai/gpt-5-mini"
 qa       = "bedrock/us.anthropic.claude-opus-4-6-v1"
 
-# ── corp-profile ──────────────────────────────────────────────────────────────
+# ── corp-profile (mirrors corp-profile's per-stage config) ────────────────────
 [profile]
-llm = false         # run LLM enrichment (clean, refine estimates)
-web_search = false   # web search during enrichment (requires llm = true)
+enrich = false
+web = false
+research_model = "openai/gpt-5-mini"
+research_provider = "exa"
+enrich_model = "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0"
+web_model = "openai/gpt-5-mini"
+web_provider = "auto"
 
 # ── web-scraper ───────────────────────────────────────────────────────────────
 # [scraper]

@@ -131,11 +131,12 @@ async def run(
         from corp_profile.profile import build_profile
         profile = build_profile(isin)
 
-    # Optionally enrich the DB profile with LLM-based estimate refinement
-    if config.profile_llm:
-        from corp_profile.enrich import EnrichConfig, enrich_profile
+    # Optionally enrich the DB profile with LLM
+    if config.profile_enrich or config.profile_web:
+        from corp_profile.enrich import enrich_profile
         enrich_cfg = config.profile_enrich_config()
-        profile, _changes = enrich_profile(profile, enrich_cfg)
+        web_cfg = config.profile_web_config() if config.profile_web else None
+        profile, _changes = enrich_profile(profile, enrich_cfg, web_config=web_cfg)
 
     context_doc = build_context_document(profile)
 

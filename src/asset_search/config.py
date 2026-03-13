@@ -116,10 +116,13 @@ class Config:
     qa_model: str = ""
 
     # ── corp-profile (config.toml [profile]) ──────────────────────────────
-    # Keys mirror EnrichConfig: model (from [models].profile), web_search, web_search_model
-    profile_llm: bool = False
-    profile_web_search: bool = False
-    profile_web_search_model: str = ""
+    profile_enrich: bool = False
+    profile_web: bool = False
+    profile_research_model: str = ""
+    profile_research_provider: str = "auto"
+    profile_enrich_model: str = ""
+    profile_web_model: str = ""
+    profile_web_provider: str = "auto"
 
     # ── web-scraper (config.toml [scraper]) ───────────────────────────────
     # Keys mirror ScraperConfig: base_url, batch_limit, poll_interval_s,
@@ -200,10 +203,14 @@ class Config:
         self.merge_model = _resolve_str("MERGE_MODEL", models, "merge", "openai/gpt-5-mini")
         self.qa_model = _resolve_str("QA_MODEL", models, "qa", bedrock_default)
 
-        # ── corp-profile (keys mirror EnrichConfig) ─────────────────────
-        self.profile_llm = _resolve_bool("PROFILE_LLM", profile, "llm", False)
-        self.profile_web_search = _resolve_bool("PROFILE_WEB_SEARCH", profile, "web_search", False)
-        self.profile_web_search_model = _resolve_str("PROFILE_WEB_SEARCH_MODEL", profile, "web_search_model", "")
+        # ── corp-profile (keys mirror per-stage config) ─────────────────
+        self.profile_enrich = _resolve_bool("PROFILE_ENRICH", profile, "enrich", False)
+        self.profile_web = _resolve_bool("PROFILE_WEB", profile, "web", False)
+        self.profile_research_model = _resolve_str("PROFILE_RESEARCH_MODEL", profile, "research_model", "openai/gpt-5-mini")
+        self.profile_research_provider = _resolve_str("PROFILE_RESEARCH_PROVIDER", profile, "research_provider", "auto")
+        self.profile_enrich_model = _resolve_str("PROFILE_ENRICH_MODEL", profile, "enrich_model", self.profile_model)
+        self.profile_web_model = _resolve_str("PROFILE_WEB_MODEL", profile, "web_model", "openai/gpt-5-mini")
+        self.profile_web_provider = _resolve_str("PROFILE_WEB_PROVIDER", profile, "web_provider", "auto")
 
         # ── web-scraper (keys mirror ScraperConfig) ──────────────────────
         self.scraper_base_url = _resolve_str("SCRAPER_BASE_URL", scraper, "base_url", "https://api.crawl4ai.com")
@@ -296,13 +303,39 @@ class Config:
             cohere_api_key=self.cohere_api_key,
         )
 
+    def profile_pipeline_config(self):
+        """Build a corp-profile PipelineConfig from this master config."""
+        from corp_profile.config import PipelineConfig
+        return PipelineConfig(
+            enrich=self.profile_enrich,
+            web=self.profile_web,
+        )
+
     def profile_enrich_config(self):
         """Build a corp-profile EnrichConfig from this master config."""
-        from corp_profile.enrich import EnrichConfig
+        from corp_profile.config import EnrichConfig
         return EnrichConfig(
-            model=self.profile_model,
-            web_search=self.profile_web_search,
-            web_search_model=self.profile_web_search_model or None,
+            model=self.profile_enrich_model or self.profile_model,
+            aws_region=self.aws_region or None,
+            aws_profile=self.aws_profile or None,
+        )
+
+    def profile_web_config(self):
+        """Build a corp-profile WebConfig from this master config."""
+        from corp_profile.config import WebConfig
+        return WebConfig(
+            model=self.profile_web_model,
+            provider=self.profile_web_provider,
+            aws_region=self.aws_region or None,
+            aws_profile=self.aws_profile or None,
+        )
+
+    def profile_research_config(self):
+        """Build a corp-profile ResearchConfig from this master config."""
+        from corp_profile.config import ResearchConfig
+        return ResearchConfig(
+            model=self.profile_research_model,
+            provider=self.profile_research_provider,
             aws_region=self.aws_region or None,
             aws_profile=self.aws_profile or None,
         )
