@@ -128,7 +128,7 @@ class Config:
     scraper_batch_limit: int = 10
     scraper_poll_interval_s: float = 2.0
     scraper_client_timeout_s: float = 120.0
-    scraper_strategy: str = "browser"
+    scraper_strategy: str = "http"
     scraper_default_timeout_ms: int = 30_000
     scraper_default_proxy: bool = False
     scraper_default_proxy_mode: str = ""
@@ -210,7 +210,7 @@ class Config:
         self.scraper_batch_limit = _resolve_int("SCRAPER_BATCH_LIMIT", scraper, "batch_limit", 10)
         self.scraper_poll_interval_s = _resolve_float("SCRAPER_POLL_INTERVAL_S", scraper, "poll_interval_s", 2.0)
         self.scraper_client_timeout_s = _resolve_float("SCRAPER_CLIENT_TIMEOUT_S", scraper, "client_timeout_s", 120.0)
-        self.scraper_strategy = _resolve_str("SCRAPER_STRATEGY", scraper, "strategy", "browser")
+        self.scraper_strategy = _resolve_str("SCRAPER_STRATEGY", scraper, "strategy", "http")
         self.scraper_default_timeout_ms = _resolve_int("SCRAPER_DEFAULT_TIMEOUT_MS", scraper, "default_timeout_ms", 30_000)
         self.scraper_default_proxy = _resolve_bool("SCRAPER_DEFAULT_PROXY", scraper, "default_proxy", False)
         self.scraper_default_proxy_mode = _resolve_str("SCRAPER_DEFAULT_PROXY_MODE", scraper, "default_proxy_mode", "")
