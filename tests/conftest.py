@@ -1,1 +1,1 @@
-"""Pytest fixtures for asset-search-v2."""
+"""Shared pytest configuration for asset-search-v2."""

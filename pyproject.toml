@@ -26,9 +26,16 @@ doc-extractor = { path = "../doc-extractor", editable = true }
 rag = { path = "../rag", editable = true }
 corp-profile = { path = "../corp-profile", editable = true }
 
+[project.optional-dependencies]
+test = ["pytest>=8.0", "pytest-asyncio>=0.25.0", "respx>=0.22.0"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = ["integration: hits real external services (Postgres, APIs)"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/asset_search"]
