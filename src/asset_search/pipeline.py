@@ -34,20 +34,22 @@ def _save_profile(run_dir: Path, profile, context_doc: str) -> None:
     (run_dir / "context.md").write_text(context_doc)
 
 
+_URL_CSV_FIELDS = [
+    "url", "category", "notes",
+    "proxy_mode", "wait_for", "js_code", "scan_full_page", "screenshot",
+]
+
+
 def _save_urls(run_dir: Path, urls: list[dict[str, Any]]) -> None:
     path = run_dir / "discovered_urls.csv"
     if not urls:
-        path.write_text("url,category,notes\n")
+        path.write_text(",".join(_URL_CSV_FIELDS) + "\n")
         return
     with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["url", "category", "notes"])
+        writer = csv.DictWriter(f, fieldnames=_URL_CSV_FIELDS, extrasaction="ignore")
         writer.writeheader()
         for u in urls:
-            writer.writerow({
-                "url": u.get("url", ""),
-                "category": u.get("category", ""),
-                "notes": u.get("notes", ""),
-            })
+            writer.writerow({field: u.get(field, "") for field in _URL_CSV_FIELDS})
 
 
 def _slug(url: str) -> str:

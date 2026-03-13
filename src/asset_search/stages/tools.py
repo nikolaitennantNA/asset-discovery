@@ -247,9 +247,8 @@ async def save_urls(
     Args:
         issuer_id: The issuer to save URLs for. Defaults to the current run's issuer.
         urls: List of URL dicts. Required keys: url, category.
-              Optional keys: notes, strategy, proxy_mode, wait_for, js_code,
+              Optional keys: notes, proxy_mode, wait_for, js_code,
               scan_full_page, screenshot.
-              strategy must be "http" or "browser" (or omitted for pipeline default).
               proxy_mode must be "auto", "datacenter", or "residential" (or omitted).
 
     Returns count of URLs saved.
