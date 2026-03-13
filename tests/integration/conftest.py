@@ -28,13 +28,16 @@ def test_issuer_id(db_conn):
     yield issuer_id
     # Cleanup: delete all rows with this issuer_id from all tables.
     # Order matters due to FK: extraction_results → scraped_pages.
-    with db_conn.cursor() as cur:
-        for table in [
-            "extraction_results",
-            "scraped_pages",
-            "discovered_urls",
-            "discovered_assets",
-            "qa_results",
-        ]:
-            cur.execute(f"DELETE FROM {table} WHERE issuer_id = %s", (issuer_id,))
-    db_conn.commit()
+    for table in [
+        "extraction_results",
+        "scraped_pages",
+        "discovered_urls",
+        "discovered_assets",
+        "qa_results",
+    ]:
+        try:
+            with db_conn.cursor() as cur:
+                cur.execute(f"DELETE FROM {table} WHERE issuer_id = %s", (issuer_id,))
+            db_conn.commit()
+        except psycopg.errors.UndefinedTable:
+            db_conn.rollback()
