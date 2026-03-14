@@ -127,76 +127,89 @@ async def crawl_page(
     url: str,
     proxy: str | None = None,
 ) -> dict[str, Any]:
-    """Fetch a single page via Crawl4AI Cloud. Lightweight exploration tool.
+    """Fetch a single page via Spider Cloud. Lightweight exploration tool.
 
-    Uses browser rendering with the same config as the batch scraper: excluded
-    tags (nav, footer, header), external images stripped, markdown cleaned of
-    map tiles and boilerplate. Coordinates and addresses are automatically
-    extracted from the HTML and injected at the top of the markdown.
+    Uses smart mode with the same config as the batch scraper: images filtered,
+    markdown cleaned of map tiles and boilerplate. Coordinates and addresses are
+    automatically extracted from the HTML and injected at the top of the markdown.
 
     Args:
         url: The full URL to fetch and render.
-        proxy: Proxy mode — "auto" (smart escalation: direct → datacenter →
-               residential), "datacenter" (2x credits), "residential" (5x
-               credits), or None (direct only, 1x credits). Use "auto" for
-               sites that may be WAF-blocked.
+        proxy: Proxy type -- "residential", "mobile", "isp", or None.
+               Spider's smart mode handles most bot detection automatically.
 
     Returns dict with keys: markdown, links_internal, links_external, metadata, error.
     """
     assert _config is not None
-    from crawl4ai_cloud import AsyncWebCrawler
+    import html2text
+    from web_scraper.config import ScraperConfig
     from web_scraper.markdown import clean_markdown
     from web_scraper.signals import extract_signals, inject_signals
 
-    # Resolve proxy to documented API format
-    proxy_cfg: dict | None = None
-    if proxy == "auto":
-        proxy_cfg = {"use_proxy": True, "skip_direct": False}
-    elif proxy in ("datacenter", "residential"):
-        proxy_cfg = {"mode": proxy}
-
-    crawler_cfg = {
-        "word_count_threshold": 10,
-        "exclude_external_images": True,
-        "excluded_tags": ["nav", "footer", "header"],
+    params: dict[str, Any] = {
+        "url": url,
+        "return_format": "raw",
+        "metadata": True,
+        "return_page_links": True,
+        "return_json_data": True,
+        "request": "smart",
+        "filter_images": True,
+        "filter_svg": True,
     }
+    if proxy:
+        if proxy == "auto":
+            params["proxy_enabled"] = True
+        else:
+            params["proxy"] = proxy
+            params["proxy_enabled"] = True
 
+    scraper_cfg = ScraperConfig.load()
     try:
-        async with AsyncWebCrawler(
-            api_key=_config.crawl4ai_api_key,
-            timeout=30.0,
-        ) as crawler:
-            result = await crawler.run(
-                url,
-                config=crawler_cfg,
-                strategy="browser",
-                browser_config={"viewport_width": 1920, "viewport_height": 1080},
-                proxy=proxy_cfg,
-                include_fields=["links", "metadata"],
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{scraper_cfg.base_url}/scrape",
+                headers={
+                    "Authorization": f"Bearer {_config.spider_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=params,
             )
-            if not result.success:
-                return {"markdown": "", "error": result.error_message or "Unknown error"}
-            if _costs:
-                credits = result.usage.crawl.credits_used if result.usage else 0
-                _costs.track_crawl4ai(1, credits_used=credits)
+            resp.raise_for_status()
 
-            raw_html = result.html or ""
-            markdown = ""
-            if result.markdown:
-                markdown = result.markdown.raw_markdown or ""
-            markdown = clean_markdown(markdown)
+        data = resp.json()
+        page = data[0] if isinstance(data, list) else data
 
-            signals = extract_signals(raw_html) if raw_html else {}
-            if signals:
-                markdown = inject_signals(markdown, signals)
+        if page.get("status") != 200 or page.get("error"):
+            return {"markdown": "", "error": page.get("error") or f"Status {page.get('status')}"}
 
-            links = result.links or {}
-            return {
-                "markdown": markdown,
-                "links_internal": links.get("internal", []),
-                "links_external": links.get("external", []),
-                "metadata": result.metadata or {},
-            }
+        if _costs:
+            cost = page.get("costs", {}).get("total_cost", 0)
+            _costs.track_spider(1, cost_usd=cost)
+
+        raw_html = page.get("content", "")
+
+        # Convert HTML to markdown
+        h2t = html2text.HTML2Text()
+        h2t.ignore_links = False
+        h2t.ignore_images = True
+        h2t.body_width = 0
+        markdown = h2t.handle(raw_html)
+        markdown = clean_markdown(markdown)
+
+        signals = extract_signals(raw_html) if raw_html else {}
+        if signals:
+            markdown = inject_signals(markdown, signals)
+
+        links = page.get("links", {})
+        links_internal = links.get("internal", []) if isinstance(links, dict) else []
+        links_external = links.get("external", []) if isinstance(links, dict) else []
+
+        return {
+            "markdown": markdown,
+            "links_internal": links_internal,
+            "links_external": links_external,
+            "metadata": page.get("metadata", {}),
+        }
     except Exception as e:
         return {"markdown": "", "error": str(e)}
 

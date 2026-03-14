@@ -220,8 +220,8 @@ def show_cost_summary(
         if total_tokens > 0:
             tok_str = f"{total_tokens / 1000:.1f}k" if total_tokens >= 1000 else str(total_tokens)
             table.add_row("Tokens (in/out)", f"{costs.total_input_tokens:,} / {costs.total_output_tokens:,} ({tok_str} total)")
-        if costs.crawl4ai_pages:
-            table.add_row("Crawl4AI pages", str(costs.crawl4ai_pages))
+        if costs.spider_pages:
+            table.add_row("Spider pages", f"{costs.spider_pages} (${costs.spider_cost_usd:.4f})")
         if costs.exa_searches:
             table.add_row("Exa searches", str(costs.exa_searches))
         if costs.cohere_rerank_calls:

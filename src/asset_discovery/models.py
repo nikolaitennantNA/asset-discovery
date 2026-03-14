@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
 
 from pydantic import BaseModel
 
@@ -54,19 +53,12 @@ class QAReport(BaseModel):
 
 
 class DiscoveredUrl(BaseModel):
-    """URL discovered by the discover agent with optional scrape configuration.
-
-    The agent sets structured fields to control how the scrape stage processes
-    each URL. Freeform notes remain for human-readable context.
-    """
     url: str
     category: str
-    notes: str = ""
-
-    # Scrape config — agent sets these based on what it learned about the page/domain
-    strategy: Literal["http", "browser"] | None = None  # None = use pipeline default
-    proxy_mode: Literal["auto", "datacenter", "residential"] | None = None
-    wait_for: str | None = None
-    js_code: str | None = None
-    scan_full_page: bool = False
-    screenshot: bool = False
+    notes: str | None = None
+    # Spider automation scripts for exceptional pages requiring interaction.
+    # e.g. {"*": [{"Click": "button.show-all-locations"}, {"Wait": 2000}]}
+    # Only set when the discover agent finds a page that genuinely requires
+    # clicking a button, expanding a section, etc. to reveal content.
+    # For 99% of URLs this stays None and Spider's smart mode handles everything.
+    automation_scripts: dict | None = None

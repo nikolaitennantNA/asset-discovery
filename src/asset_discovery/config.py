@@ -102,7 +102,7 @@ class Config:
 
     # ── Secrets (env vars only, never in config.toml) ─────────────────────
     corpgraph_db_url: str = ""
-    crawl4ai_api_key: str = ""
+    spider_api_key: str = ""
     firecrawl_api_key: str = ""
     openai_api_key: str = ""
     cohere_api_key: str = ""
@@ -127,7 +127,7 @@ class Config:
     # ── web-scraper (config.toml [scraper]) ───────────────────────────────
     # Keys mirror ScraperConfig: base_url, batch_limit, poll_interval_s,
     # client_timeout_s, strategy, default_timeout_ms, default_proxy
-    scraper_base_url: str = "https://api.crawl4ai.com"
+    scraper_base_url: str = "https://api.spider.cloud"
     scraper_batch_limit: int = 10
     scraper_poll_interval_s: float = 2.0
     scraper_client_timeout_s: float = 120.0
@@ -190,7 +190,7 @@ class Config:
 
         # ── Secrets (env only) ────────────────────────────────────────────
         self.corpgraph_db_url = _env("CORPGRAPH_DB_URL", "postgresql://corpgraph:corpgraph@localhost:5432/corpgraph")
-        self.crawl4ai_api_key = _env("CRAWL4AI_API_KEY")
+        self.spider_api_key = _env("SPIDER_API_KEY")
         self.firecrawl_api_key = _env("FIRECRAWL_API_KEY")
         self.openai_api_key = _env("OPENAI_API_KEY")
         self.cohere_api_key = _env("COHERE_API_KEY")
@@ -213,7 +213,7 @@ class Config:
         self.profile_web_provider = _resolve_str("PROFILE_WEB_PROVIDER", profile, "web_provider", "auto")
 
         # ── web-scraper (keys mirror ScraperConfig) ──────────────────────
-        self.scraper_base_url = _resolve_str("SCRAPER_BASE_URL", scraper, "base_url", "https://api.crawl4ai.com")
+        self.scraper_base_url = _resolve_str("SCRAPER_BASE_URL", scraper, "base_url", "https://api.spider.cloud")
         self.scraper_batch_limit = _resolve_int("SCRAPER_BATCH_LIMIT", scraper, "batch_limit", 10)
         self.scraper_poll_interval_s = _resolve_float("SCRAPER_POLL_INTERVAL_S", scraper, "poll_interval_s", 2.0)
         self.scraper_client_timeout_s = _resolve_float("SCRAPER_CLIENT_TIMEOUT_S", scraper, "client_timeout_s", 120.0)
@@ -264,17 +264,7 @@ class Config:
     def scraper_config(self):
         """Build a web-scraper ScraperConfig from this master config."""
         from web_scraper import ScraperConfig
-        return ScraperConfig(
-            base_url=self.scraper_base_url,
-            batch_limit=self.scraper_batch_limit,
-            poll_interval_s=self.scraper_poll_interval_s,
-            client_timeout_s=self.scraper_client_timeout_s,
-            strategy=self.scraper_strategy,
-            default_timeout_ms=self.scraper_default_timeout_ms,
-            default_proxy=self.scraper_default_proxy,
-            default_proxy_mode=self.scraper_default_proxy_mode,
-            remove_overlays=self.scraper_remove_overlays,
-        )
+        return ScraperConfig.load()
 
     def extractor_config(self):
         """Build a doc-extractor ExtractorConfig from this master config."""
