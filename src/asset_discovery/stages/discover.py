@@ -14,7 +14,7 @@ from pydantic_ai.exceptions import UsageLimitExceeded
 from ..config import Config, _to_pydantic_ai_model
 from ..cost import CostTracker
 from ..db import get_connection, get_discovered_urls, delete_discovered_urls
-from ..display import show_detail, show_stage, show_warning
+from ..display import show_detail, show_spinner, show_stage, show_warning
 from . import tools
 from .prompts import (
     DISCOVER_SYSTEM,
@@ -244,7 +244,6 @@ async def run_discover(
     remaining_tool_budget = config.max_discover_tool_calls
 
     # ── Phase 1: Supervisor plans (no tools — fast structured output) ─────
-    show_detail("Supervisor planning...")
     supervisor_system = f"{context_doc}\n\n---\n\n{DISCOVER_SUPERVISOR_PROMPT}"
 
     supervisor = Agent(
@@ -255,19 +254,20 @@ async def run_discover(
     )
 
     plan: DiscoverPlan | None = None
-    async with supervisor:
-        try:
-            result = await asyncio.wait_for(
-                supervisor.run(
-                    "Plan the URL discovery for this company. Break into parallel tasks for worker agents.",
-                ),
-                timeout=min(90, overall_timeout),
-            )
-            plan = result.output
-            if costs:
-                costs.track_pydantic_ai(result.usage(), config.discover_supervisor_model, "discover_supervisor")
-        except (asyncio.TimeoutError, Exception) as e:
-            show_warning(f"Supervisor planning failed: {e}")
+    with show_spinner("Supervisor planning..."):
+        async with supervisor:
+            try:
+                result = await asyncio.wait_for(
+                    supervisor.run(
+                        "Plan the URL discovery for this company. Break into parallel tasks for worker agents.",
+                    ),
+                    timeout=min(90, overall_timeout),
+                )
+                plan = result.output
+                if costs:
+                    costs.track_pydantic_ai(result.usage(), config.discover_supervisor_model, "discover_supervisor")
+            except (asyncio.TimeoutError, Exception) as e:
+                show_warning(f"Supervisor planning failed: {e}")
 
     if not plan or not plan.tasks:
         show_detail("Falling back to single-agent discovery")
@@ -312,28 +312,29 @@ async def run_discover(
             show_detail("Time budget exhausted, skipping review")
             break
 
-        show_detail(f"Supervisor reviewing (round {round_num})...")
         review_msg = _build_review_message(issuer_id, round_num, config)
 
         review_supervisor = Agent(
             _to_pydantic_ai_model(config.discover_supervisor_model),
             system_prompt=supervisor_system,
             output_type=DiscoverPlan,
+            retries=2,
         )
 
         review_plan: DiscoverPlan | None = None
-        async with review_supervisor:
-            try:
-                review_result = await asyncio.wait_for(
-                    review_supervisor.run(review_msg),
-                    timeout=min(120, remaining_time),
-                )
-                review_plan = review_result.output
-                if costs:
-                    costs.track_pydantic_ai(review_result.usage(), config.discover_supervisor_model, "discover_supervisor_review")
-            except (asyncio.TimeoutError, Exception) as e:
-                show_warning(f"Supervisor review failed: {e}")
-                break
+        with show_spinner(f"Supervisor reviewing (round {round_num})..."):
+            async with review_supervisor:
+                try:
+                    review_result = await asyncio.wait_for(
+                        review_supervisor.run(review_msg),
+                        timeout=min(120, remaining_time),
+                    )
+                    review_plan = review_result.output
+                    if costs:
+                        costs.track_pydantic_ai(review_result.usage(), config.discover_supervisor_model, "discover_supervisor_review")
+                except (asyncio.TimeoutError, Exception) as e:
+                    show_warning(f"Supervisor review failed: {e}")
+                    break
 
         if not review_plan:
             break

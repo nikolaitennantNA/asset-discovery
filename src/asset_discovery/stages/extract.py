@@ -130,6 +130,7 @@ async def run_extract(
     config: Config, existing_assets_summary: str | None = None,
     costs: CostTracker | None = None,
     profile: Any = None,
+    skip_cache: bool = False,
 ) -> list[Asset]:
     """Extract assets from scraped pages, skipping cached extractions."""
     show_stage(4, "Extracting assets")
@@ -139,20 +140,29 @@ async def run_extract(
 
     try:
         to_extract: list[dict[str, Any]] = []
-        # Dedup cached assets by (name, entity) since batched extraction
-        # saves the full batch result against every page in the batch.
-        seen_cached: set[tuple[str, str]] = set()
-        for page in pages:
-            pid = page.get("page_id") or url_hash(page["url"])
-            cached = get_extraction_result(conn, pid, config.extract_model)
-            if cached:
-                for ad in (cached.get("assets_json") or []):
-                    key = (ad.get("asset_name", ""), ad.get("entity_name", ""))
-                    if key not in seen_cached:
-                        seen_cached.add(key)
-                        all_assets.append(Asset(**ad))
-            else:
-                to_extract.append(page)
+
+        if skip_cache:
+            from ..display import show_detail
+            show_detail(f"Bypassing extraction cache ({len(pages)} pages to extract)")
+            to_extract = [p for p in pages if p.get("markdown")]
+        else:
+            # Dedup cached assets by (name, entity) since batched extraction
+            # saves the full batch result against every page in the batch.
+            seen_cached: set[tuple[str, str]] = set()
+            for page in pages:
+                pid = page.get("page_id") or url_hash(page["url"])
+                cached = get_extraction_result(conn, pid, config.extract_model)
+                if cached:
+                    for ad in (cached.get("assets_json") or []):
+                        key = (ad.get("asset_name", ""), ad.get("entity_name", ""))
+                        if key not in seen_cached:
+                            seen_cached.add(key)
+                            all_assets.append(Asset(**ad))
+                else:
+                    to_extract.append(page)
+            if all_assets:
+                from ..display import show_detail
+                show_detail(f"{len(all_assets)} assets loaded from cache, {len(to_extract)} pages to extract")
 
         if not to_extract:
             return all_assets

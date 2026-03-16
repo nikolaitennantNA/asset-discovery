@@ -6,10 +6,11 @@ Ported and simplified from asset-discovery v1 display.py.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from typing import Any, Generator
+from contextlib import asynccontextmanager, contextmanager
+from typing import Any, AsyncGenerator, Generator
 
 from rich.console import Console
+from rich.live import Live
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -18,6 +19,7 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
+from rich.spinner import Spinner
 from rich.table import Table
 
 console = Console()
@@ -35,6 +37,17 @@ def show_stage(stage: int, label: str) -> None:
 def show_detail(msg: str) -> None:
     """Print an indented dim detail line."""
     console.print(f"        [dim]{msg}[/dim]")
+
+
+@contextmanager
+def show_spinner(label: str) -> Generator[None, None, None]:
+    """Show an animated spinner with a label. Clears when done."""
+    with Live(
+        Spinner("dots", text=f"[dim]        {label}[/dim]"),
+        console=console,
+        transient=True,
+    ):
+        yield
 
 
 def show_success(msg: str) -> None:

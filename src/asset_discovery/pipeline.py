@@ -160,6 +160,8 @@ async def run(
         )
     else:
         # Skipping profile LLM stages — load from DB without enrichment
+        from .display import show_detail
+        show_detail("Skipped enrichment (loaded from DB)")
         profile, context_doc = corp_profile.run(
             identifier=isin,
             from_file=profile_file,
@@ -221,7 +223,10 @@ async def run(
     from .stages.extract import run_extract
 
     existing_summary = _build_existing_summary(profile)
-    assets = await run_extract(issuer_id, profile.legal_name, pages, config, existing_summary, costs, profile=profile)
+    assets = await run_extract(
+        issuer_id, profile.legal_name, pages, config, existing_summary, costs,
+        profile=profile, skip_cache=(start_from == "extract"),
+    )
     stages_run.append("extract")
     _save_extractions(run_dir, assets)
 

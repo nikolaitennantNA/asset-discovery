@@ -9,7 +9,7 @@ from web_scraper import scrape_stream, ScrapeConfig, Usage as ScraperUsage
 from ..config import Config
 from ..cost import CostTracker
 from ..db import get_connection, get_cached_page, save_scraped_page, url_hash
-from ..display import show_stage
+from ..display import show_detail, show_stage
 
 
 def _config_from_url(url_row: dict[str, Any]) -> ScrapeConfig | None:
@@ -51,6 +51,11 @@ async def run_scrape(
             cfg = _config_from_url(url_row)
             if cfg is not None:
                 configs[url_row["url"]] = cfg
+
+        if cached_pages:
+            show_detail(f"{len(cached_pages)} of {len(discovered_urls)} pages loaded from cache")
+        if to_scrape:
+            show_detail(f"{len(to_scrape)} pages to scrape")
 
         all_pages: list[dict[str, Any]] = list(cached_pages)
         scraper_usage = ScraperUsage()
