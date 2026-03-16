@@ -131,27 +131,25 @@ async def run(
 
     from corp_profile.profile import build_context_document
 
-    if profile_file:
+    if config.profile_research:
+        from corp_profile.research import research_profile
+        profile, _changes = research_profile(
+            identifier=isin,
+            config=config.profile_research_config(),
+        )
+    elif profile_file:
         from corp_profile.profile import build_profile_from_file
         profile = build_profile_from_file(profile_file)
     else:
         from corp_profile.profile import build_profile
         profile = build_profile(isin)
 
-    # Optionally research the profile from scratch via LLM + web search
-    if config.profile_research:
-        from corp_profile.research import research_profile
-        research_cfg = config.profile_research_config()
-        profile, _research_changes = research_profile(
-            identifier=isin, seed=profile, config=research_cfg,
-        )
-
-    # Optionally enrich the DB profile with LLM
-    if config.profile_enrich or config.profile_web:
-        from corp_profile.enrich import enrich_profile
-        enrich_cfg = config.profile_enrich_config()
-        web_cfg = config.profile_web_config() if config.profile_web else None
-        profile, _changes = enrich_profile(profile, enrich_cfg, web_config=web_cfg)
+        if config.profile_enrich or config.profile_web:
+            from corp_profile.enrich import enrich_profile
+            web_cfg = config.profile_web_config() if config.profile_web else None
+            profile, _changes = enrich_profile(
+                profile, config.profile_enrich_config(), web_config=web_cfg,
+            )
 
     context_doc = build_context_document(profile)
 
