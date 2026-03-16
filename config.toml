@@ -15,26 +15,38 @@
 # ── Models ────────────────────────────────────────────────────────────────────
 # Any litellm-supported model string.
 [models]
-profile  = "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0"
+profile = "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0"
 discover = "bedrock/us.anthropic.claude-opus-4-6-v1"
-extract  = "bedrock/us.anthropic.claude-opus-4-6-v1"
-merge    = "openai/gpt-5-mini"
-qa       = "bedrock/us.anthropic.claude-opus-4-6-v1"
+extract = "bedrock/us.anthropic.claude-opus-4-6-v1"
+count = "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0"  # cheap model for asset counting pre-pass
+merge = "openai/gpt-5-mini"
+qa = "bedrock/us.anthropic.claude-opus-4-6-v1"
 
 # ── corp-profile (mirrors corp-profile's per-stage config) ────────────────────
 [profile]
-enrich = false
-web = false
-research_model = "openai/gpt-5-mini"
+
+# research = false                                             # need to add to corp profile
+research_model = "bedrock/us.anthropic.claude-sonnet-4-6-v1"
 research_provider = "exa"
+
+enrich = true
 enrich_model = "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+web = true
 web_model = "openai/gpt-5-mini"
 web_provider = "auto"
 
 # ── web-scraper ───────────────────────────────────────────────────────────────
-# [scraper]
-# default_timeout_ms = 30_000
-# default_proxy = false
+# Overrides for ScraperConfig. Uncomment to change from scraper defaults.
+[scraper]
+# request_mode = "smart"            # smart | http | chrome
+# proxy_enabled = false
+# default_proxy = ""                # residential | mobile | isp
+# readability = false
+# filter_output_main_only = true
+# lite_mode = false
+# max_credits_per_page = 0          # 0 = no limit
+# max_credits_allowed = 0           # 0 = no limit
 
 # ── doc-extractor ─────────────────────────────────────────────────────────────
 # Increase max_batch_tokens for models with larger context (e.g. 300K+ for GPT-5.2).
@@ -51,11 +63,10 @@ region = "us-east-2"
 
 # ── Search ────────────────────────────────────────────────────────────────────
 [search]
-provider = "exa"  # exa | brave | tavily | openai
+provider = "exa" # exa | brave | tavily | openai
 
 # ── Pipeline caps ─────────────────────────────────────────────────────────────
 [pipeline]
-max_scrape_concurrency = 20
 page_stale_days = 30
 max_discover_tool_calls = 200
 max_discover_minutes = 15
