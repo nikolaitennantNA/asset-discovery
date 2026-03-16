@@ -313,7 +313,7 @@ class Config:
 
     def profile_pipeline_config(self):
         """Build a corp-profile PipelineConfig from this master config."""
-        from corp_profile.config import PipelineConfig
+        from corp_profile import PipelineConfig
         return PipelineConfig(
             enrich=self.profile_enrich,
             web=self.profile_web,
@@ -321,7 +321,7 @@ class Config:
 
     def profile_enrich_config(self):
         """Build a corp-profile EnrichConfig from this master config."""
-        from corp_profile.config import EnrichConfig
+        from corp_profile import EnrichConfig
         return EnrichConfig(
             model=self.profile_enrich_model,
             aws_region=self.aws_region or None,
@@ -330,7 +330,7 @@ class Config:
 
     def profile_web_config(self):
         """Build a corp-profile WebConfig from this master config."""
-        from corp_profile.config import WebConfig
+        from corp_profile import WebConfig
         return WebConfig(
             model=self.profile_web_model,
             provider=self.profile_web_provider,
@@ -340,7 +340,7 @@ class Config:
 
     def profile_research_config(self):
         """Build a corp-profile ResearchConfig from this master config."""
-        from corp_profile.config import ResearchConfig
+        from corp_profile import ResearchConfig
         return ResearchConfig(
             model=self.profile_research_model,
             provider=self.profile_research_provider,

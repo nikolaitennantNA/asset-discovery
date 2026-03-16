@@ -129,29 +129,22 @@ async def run(
     from .display import show_stage
     show_stage(1, "Profiling")
 
-    from corp_profile.profile import build_context_document
+    import corp_profile
 
     if config.profile_research:
-        from corp_profile.research import research_profile
-        profile, _changes = research_profile(
-            identifier=isin,
+        profile, context_doc = corp_profile.research(
+            isin,
             config=config.profile_research_config(),
         )
-    elif profile_file:
-        from corp_profile.profile import build_profile_from_file
-        profile = build_profile_from_file(profile_file)
     else:
-        from corp_profile.profile import build_profile
-        profile = build_profile(isin)
-
-        if config.profile_enrich or config.profile_web:
-            from corp_profile.enrich import enrich_profile
-            web_cfg = config.profile_web_config() if config.profile_web else None
-            profile, _changes = enrich_profile(
-                profile, config.profile_enrich_config(), web_config=web_cfg,
-            )
-
-    context_doc = build_context_document(profile)
+        profile, context_doc = corp_profile.run(
+            identifier=isin,
+            from_file=profile_file,
+            enrich=config.profile_enrich,
+            web=config.profile_web,
+            enrich_config=config.profile_enrich_config() if config.profile_enrich else None,
+            web_config=config.profile_web_config() if config.profile_web else None,
+        )
 
     # Use profile's issuer_id as the canonical identifier for all downstream stages
     issuer_id = profile.issuer_id or isin
