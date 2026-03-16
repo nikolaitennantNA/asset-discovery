@@ -12,7 +12,7 @@
 profile.enrich = "openai/gpt-5-nano"   # clean + refine stages
 profile.research = "openai/gpt-5.4"             # research-from-scratch LLM
 profile.web = "openai/gpt-5-mini"                # web search enrichment LLM
-discover.supervisor = "openai/gpt-5-mini"
+discover.supervisor = "openai/gpt-5.4"
 discover.worker = "openai/gpt-5-nano"
 extract = "openai/gpt-5.4"
 count = "openai/gpt-5-nano"
@@ -52,7 +52,7 @@ max_batch_tokens = 120_000    # Increase for models with larger context windows
 max_page_tokens = 35_000
 overlap_tokens = 5_000
 max_retries = 2
-default_concurrency = 10      # Lower to 3-4 for Bedrock
+default_concurrency = 75      # Lower to 3-4 for Bedrock
 
 # ── rag ───────────────────────────────────────────────────────────────────────
 # [rag]
@@ -64,7 +64,7 @@ region = "us-east-2"
 
 # ── Search (for discover stage, not corp-profile) ────────────────────────────
 [search]
-provider = "WebFetchTool"              # exa | brave | tavily | openai
+provider = "openai"                     # exa | brave | tavily | openai
 
 # ── Pipeline caps ─────────────────────────────────────────────────────────────
 [pipeline]

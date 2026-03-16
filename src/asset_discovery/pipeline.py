@@ -202,13 +202,8 @@ async def run(
     if stop_after == "discover":
         return _result([], None, start, stages_run)
 
-    # --- Set up RAG store ---
+    # --- Set up RAG store (disabled — skip ingestion during scrape) ---
     rag_store = None
-    try:
-        from rag import RAGStore
-        rag_store = RAGStore(pg_url=config.corpgraph_db_url, config=config.rag_config())
-    except ImportError:
-        pass
 
     # --- Stage 3: Scrape ---
     from .stages.scrape import run_scrape

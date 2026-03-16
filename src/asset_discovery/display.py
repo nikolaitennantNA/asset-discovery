@@ -6,6 +6,7 @@ Ported and simplified from asset-discovery v1 display.py.
 
 from __future__ import annotations
 
+import time
 from contextlib import asynccontextmanager, contextmanager
 from typing import Any, AsyncGenerator, Generator
 
@@ -21,6 +22,7 @@ from rich.progress import (
 )
 from rich.spinner import Spinner
 from rich.table import Table
+from rich.text import Text
 
 console = Console()
 
@@ -252,3 +254,185 @@ def show_cost_summary(
             table.add_row("Duration", f"{secs}s")
 
     console.print(table)
+
+
+# ── Discover stage display ──────────────────────────────────────────────────
+
+
+class DiscoverDisplay:
+    """Tree-style live display for the discover stage.
+
+    Tool events come from tools.py via the on_event callback.
+    Agent text and web search events come from discover.py.
+
+    Uses tree connectors (├─ / └─) under each domain, with web searches
+    as visual section separators and Rich Panel for header/footer.
+    """
+
+    _LABEL_W = 9   # action label column width
+    _IND = "   "    # base indent
+
+    def __init__(self, company_name: str = ""):
+        self._current_domain: str | None = None
+        self._seen_domains: set[str] = set()
+        self._plan_shown = False
+        self._total_saved = 0
+        self._company_name = company_name
+        self._start = time.monotonic()
+        # Buffered detail line — printed with ├─ when next arrives,
+        # or └─ when domain/section ends.
+        self._pending: tuple[str, str] | None = None  # (msg, style)
+
+    def show_header(self) -> None:
+        """Print panel header with stage number and company name."""
+        title = Text()
+        title.append("[2/6]", style="bold cyan")
+        title.append(" Discovering URLs", style="bold")
+        if self._company_name:
+            title.append("  ·  ", style="dim")
+            title.append(self._company_name)
+        console.print(Panel(title, border_style="dim", padding=(0, 1)))
+
+    # ── buffered tree connectors ─────────────────────────────────
+
+    def _flush(self, is_last: bool = False) -> None:
+        """Print the pending detail line with the correct tree connector."""
+        if self._pending is None:
+            return
+        msg, style = self._pending
+        connector = "└─" if is_last else "├─"
+        t = Text(f"{self._IND}{connector} ")
+        t.append(msg, style=style)
+        console.print(t)
+        self._pending = None
+
+    def _queue(self, msg: str, style: str = "dim") -> None:
+        """Queue a detail line. Previous pending is flushed with ├─."""
+        self._flush(is_last=False)
+        self._pending = (msg, style)
+
+    def _end_section(self) -> None:
+        """Close current domain section — flush pending with └─."""
+        self._flush(is_last=True)
+
+    # ── domain / section management ──────────────────────────────
+
+    def _start_domain(self, domain: str) -> None:
+        """Start a new domain section with a bold header."""
+        self._end_section()
+        self._current_domain = domain
+        first = domain not in self._seen_domains
+        self._seen_domains.add(domain)
+        console.print()
+        t = Text(self._IND)
+        t.append(domain, style="bold" if first else "dim")
+        console.print(t)
+
+    # ── public event handlers ────────────────────────────────────
+
+    def on_agent_text(self, text: str) -> None:
+        """Handle text from the agent. First text becomes the plan line."""
+        text = text.strip()
+        if not text:
+            return
+        if not self._plan_shown:
+            self._plan_shown = True
+            for prefix in ("Approach:", "Plan:", "Strategy:"):
+                if text.startswith(prefix):
+                    text = text[len(prefix) :].strip()
+                    break
+            if len(text) > 200:
+                text = text[:197] + "..."
+            self._end_section()
+            console.print()
+            t = Text(self._IND)
+            t.append("Plan: ", style="bold dim")
+            t.append(text, style="italic dim")
+            console.print(t)
+        else:
+            self._end_section()
+            if len(text) > 120:
+                text = text[:117] + "..."
+            console.print()
+            t = Text(self._IND)
+            t.append(text, style="italic dim")
+            console.print(t)
+
+    def on_web_search(self, query: str) -> None:
+        """Display a web search call as a section separator."""
+        self._end_section()
+        if len(query) > 80:
+            query = query[:77] + "..."
+        console.print()
+        t = Text(self._IND)
+        t.append(f'web_search "{query}"', style="cyan")
+        console.print(t)
+
+    def on_event(self, event: str, data: dict) -> None:
+        """Handle a tool result event from tools.py."""
+        domain = data.get("domain", "")
+        if domain and domain != self._current_domain:
+            self._start_domain(domain)
+
+        if event == "sitemap_indexes":
+            n = data.get("count", 0)
+            self._queue(f"{'sitemap':<{self._LABEL_W}}{n} indexes found")
+
+        elif event == "sitemap_urls":
+            n = data.get("count", 0)
+            name = data.get("sitemap", "")
+            if name:
+                self._queue(f"{'sitemap':<{self._LABEL_W}}{name} → {n} urls")
+            else:
+                self._queue(f"{'sitemap':<{self._LABEL_W}}{n} urls")
+
+        elif event == "crawl_result":
+            path = data.get("path", "/")
+            if len(path) > 50:
+                path = path[:47] + "..."
+            success = data.get("success", True)
+            label = path if success else f"{path} (failed)"
+            self._queue(f"{'crawl':<{self._LABEL_W}}{label}")
+
+        elif event == "probe_result":
+            total = data.get("total", 0)
+            exist = data.get("exist", 0)
+            self._queue(f"{'probe':<{self._LABEL_W}}{total} paths → {exist} exist")
+
+        elif event == "save_result":
+            count = data.get("count", 0)
+            self._total_saved += count
+            self._queue(f"{'save':<{self._LABEL_W}}{count} urls")
+
+        elif event == "map_result":
+            count = data.get("count", 0)
+            self._queue(f"{'mapped':<{self._LABEL_W}}{count} urls")
+
+        elif event == "spider_result":
+            count = data.get("count", 0)
+            self._queue(f"{'spider':<{self._LABEL_W}}{count} links")
+
+        elif event == "remove_result":
+            count = data.get("count", 0)
+            self._end_section()
+            console.print()
+            t = Text(self._IND)
+            t.append(f"pruned {count} urls", style="yellow")
+            console.print(t)
+
+    def show_footer(self, url_count: int | None = None) -> None:
+        """Print panel footer with total URLs and elapsed time."""
+        self._end_section()
+        elapsed = time.monotonic() - self._start
+        count = url_count if url_count is not None else self._total_saved
+        mins, secs = divmod(int(elapsed), 60)
+        time_str = f"{mins}m {secs:02d}s" if mins else f"{secs}s"
+        console.print()
+        footer = Text()
+        footer.append("Done", style="bold")
+        footer.append("  ·  ", style="dim")
+        footer.append(f"{count} urls saved")
+        footer.append("  ·  ", style="dim")
+        footer.append(time_str)
+        console.print(Panel(footer, border_style="dim", padding=(0, 1)))
+        console.print()  # space before next stage

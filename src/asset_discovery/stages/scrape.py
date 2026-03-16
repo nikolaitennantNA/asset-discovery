@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from web_scraper import scrape_stream, ScrapeConfig, Usage as ScraperUsage
@@ -9,7 +10,7 @@ from web_scraper import scrape_stream, ScrapeConfig, Usage as ScraperUsage
 from ..config import Config
 from ..cost import CostTracker
 from ..db import get_connection, get_cached_page, save_scraped_page, url_hash
-from ..display import show_detail, show_spinner, show_stage
+from ..display import show_detail, show_spinner, show_stage, show_warning
 
 
 def _config_from_url(url_row: dict[str, Any]) -> ScrapeConfig | None:
@@ -71,37 +72,68 @@ async def run_scrape(
             rag_usage = RAGUsage()
 
         if to_scrape:
+            # Dedup URLs (same URL can appear in discovered_urls from
+            # multiple save_urls calls with different notes/category)
+            seen_urls: set[str] = set()
+            deduped: list[dict[str, Any]] = []
+            for u in to_scrape:
+                if u["url"] not in seen_urls:
+                    seen_urls.add(u["url"])
+                    deduped.append(u)
+            if len(deduped) < len(to_scrape):
+                show_detail(f"Deduplicated {len(to_scrape)} → {len(deduped)} unique URLs")
+                to_scrape = deduped
+
             scraped_count = 0
-            async for page in scrape_stream(
+            stall_timeout = 90  # seconds with no page = give up on remaining
+            stream = scrape_stream(
                 urls=[u["url"] for u in to_scrape],
                 api_key=config.spider_api_key,
                 configs=configs if configs else None,
                 scraper_config=config.scraper_config(),
                 usage=scraper_usage,
-            ):
-                scraped_count += 1
-                if page.success and page.markdown:
-                    pid, chash = save_scraped_page(
-                        conn, issuer_id, page.url, page.markdown, page.raw_html,
-                        page.signals, None, stale_days=config.page_stale_days,
-                    )
-                    page_dict = {
-                        "page_id": pid, "url": page.url,
-                        "markdown": page.markdown, "raw_html": page.raw_html,
-                        "signals": page.signals, "content_hash": chash,
-                    }
-                    all_pages.append(page_dict)
-                    show_detail(f"Scraped {scraped_count}/{len(to_scrape)}: {page.url[:60]}")
+            )
+            try:
+                while True:
+                    try:
+                        page = await asyncio.wait_for(
+                            stream.__anext__(), timeout=stall_timeout,
+                        )
+                    except StopAsyncIteration:
+                        break
+                    except (TimeoutError, asyncio.TimeoutError):
+                        remaining = len(to_scrape) - scraped_count
+                        show_warning(
+                            f"Scrape stalled for {stall_timeout}s — "
+                            f"skipping {remaining} remaining pages"
+                        )
+                        break
 
-                    if rag_store and rag_usage is not None:
-                        rag_doc = {
-                            "id": pid,
-                            "content": page.markdown,
-                            "metadata": {"url": page.url},
+                    scraped_count += 1
+                    if page.success and page.markdown:
+                        pid, chash = save_scraped_page(
+                            conn, issuer_id, page.url, page.markdown, page.raw_html,
+                            page.signals, None, stale_days=config.page_stale_days,
+                        )
+                        page_dict = {
+                            "page_id": pid, "url": page.url,
+                            "markdown": page.markdown, "raw_html": page.raw_html,
+                            "signals": page.signals, "content_hash": chash,
                         }
-                        await rag_store.ingest([rag_doc], namespace=issuer_id, usage=rag_usage)
-                else:
-                    show_detail(f"Failed {scraped_count}/{len(to_scrape)}: {page.url[:60]}")
+                        all_pages.append(page_dict)
+                        show_detail(f"Scraped {scraped_count}/{len(to_scrape)}: {page.url[:60]}")
+
+                        if rag_store and rag_usage is not None:
+                            rag_doc = {
+                                "id": pid,
+                                "content": page.markdown,
+                                "metadata": {"url": page.url},
+                            }
+                            await rag_store.ingest([rag_doc], namespace=issuer_id, usage=rag_usage)
+                    else:
+                        show_detail(f"Failed {scraped_count}/{len(to_scrape)}: {page.url[:60]}")
+            except Exception as e:
+                show_warning(f"Scrape stream error: {e} — continuing with {scraped_count} pages")
             show_detail(f"Scraping complete: {len(all_pages) - len(cached_pages)} new pages")
 
         if costs and rag_usage and rag_usage.embedding_tokens:

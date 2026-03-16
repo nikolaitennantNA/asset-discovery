@@ -49,7 +49,9 @@ def main():
         config = Config()
         if args.verbose:
             import logging
-            logging.basicConfig(level=logging.DEBUG, format="  %(name)s: %(message)s")
+            # Only set our own loggers to debug — suppress noisy HTTP libraries
+            logging.basicConfig(level=logging.WARNING, format="  %(name)s: %(message)s")
+            logging.getLogger("asset_discovery").setLevel(logging.DEBUG)
         result = asyncio.run(run(
             args.isin,
             config,
