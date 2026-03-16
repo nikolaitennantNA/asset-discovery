@@ -137,12 +137,13 @@ async def run(
             config=config.profile_research_config(),
         )
     else:
+        needs_llm = config.profile_enrich or config.profile_web
         profile, context_doc = corp_profile.run(
             identifier=isin,
             from_file=profile_file,
             enrich=config.profile_enrich,
             web=config.profile_web,
-            enrich_config=config.profile_enrich_config() if config.profile_enrich else None,
+            enrich_config=config.profile_enrich_config() if needs_llm else None,
             web_config=config.profile_web_config() if config.profile_web else None,
         )
 
