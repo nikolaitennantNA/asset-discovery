@@ -109,20 +109,20 @@ class Config:
     exa_api_key: str = ""
 
     # ── Models (config.toml [models], env override) ───────────────────────
-    profile_model: str = ""
+    profile_enrich_model: str = ""
+    profile_research_model: str = ""
+    profile_web_model: str = ""
     discover_model: str = ""
     extract_model: str = ""
-    count_model: str = ""   # cheap model for asset counting pre-pass
+    count_model: str = ""
     merge_model: str = ""
     qa_model: str = ""
 
     # ── corp-profile (config.toml [profile]) ──────────────────────────────
-    profile_enrich: bool = False
-    profile_web: bool = False
-    profile_research_model: str = ""
-    profile_research_provider: str = "auto"
-    profile_enrich_model: str = ""
-    profile_web_model: str = ""
+    profile_enrich: bool = True
+    profile_research: bool = False
+    profile_web: bool = True
+    profile_research_provider: str = "exa"
     profile_web_provider: str = "auto"
 
     # ── web-scraper (config.toml [scraper]) ───────────────────────────────
@@ -194,21 +194,24 @@ class Config:
         self.cohere_api_key = _env("COHERE_API_KEY")
         self.exa_api_key = _env("EXA_API_KEY")
 
-        # ── Models ────────────────────────────────────────────────────────
-        self.profile_model = _resolve_str("PROFILE_MODEL", models, "profile", "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0")
+        # ── Models (all in [models] section, dotted keys for profile) ────
+        haiku = "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0"
+        sonnet = "bedrock/us.anthropic.claude-sonnet-4-6-v1"
+        profile_models = models.get("profile", {}) if isinstance(models.get("profile"), dict) else {}
+        self.profile_enrich_model = _resolve_str("PROFILE_ENRICH_MODEL", profile_models, "enrich", haiku)
+        self.profile_research_model = _resolve_str("PROFILE_RESEARCH_MODEL", profile_models, "research", sonnet)
+        self.profile_web_model = _resolve_str("PROFILE_WEB_MODEL", profile_models, "web", "openai/gpt-5-mini")
         self.discover_model = _resolve_str("DISCOVER_MODEL", models, "discover", bedrock_default)
         self.extract_model = _resolve_str("EXTRACT_MODEL", models, "extract", bedrock_default)
-        self.count_model = _resolve_str("COUNT_MODEL", models, "count", "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0")
+        self.count_model = _resolve_str("COUNT_MODEL", models, "count", haiku)
         self.merge_model = _resolve_str("MERGE_MODEL", models, "merge", "openai/gpt-5-mini")
         self.qa_model = _resolve_str("QA_MODEL", models, "qa", bedrock_default)
 
-        # ── corp-profile (keys mirror per-stage config) ─────────────────
-        self.profile_enrich = _resolve_bool("PROFILE_ENRICH", profile, "enrich", False)
-        self.profile_web = _resolve_bool("PROFILE_WEB", profile, "web", False)
-        self.profile_research_model = _resolve_str("PROFILE_RESEARCH_MODEL", profile, "research_model", "openai/gpt-5-mini")
-        self.profile_research_provider = _resolve_str("PROFILE_RESEARCH_PROVIDER", profile, "research_provider", "auto")
-        self.profile_enrich_model = _resolve_str("PROFILE_ENRICH_MODEL", profile, "enrich_model", self.profile_model)
-        self.profile_web_model = _resolve_str("PROFILE_WEB_MODEL", profile, "web_model", "openai/gpt-5-mini")
+        # ── corp-profile (toggles + provider settings) ───────────────────
+        self.profile_enrich = _resolve_bool("PROFILE_ENRICH", profile, "enrich", True)
+        self.profile_research = _resolve_bool("PROFILE_RESEARCH", profile, "research", False)
+        self.profile_web = _resolve_bool("PROFILE_WEB", profile, "web", True)
+        self.profile_research_provider = _resolve_str("PROFILE_RESEARCH_PROVIDER", profile, "research_provider", "exa")
         self.profile_web_provider = _resolve_str("PROFILE_WEB_PROVIDER", profile, "web_provider", "auto")
 
         # ── web-scraper (keys mirror ScraperConfig) ──────────────────────
@@ -320,7 +323,7 @@ class Config:
         """Build a corp-profile EnrichConfig from this master config."""
         from corp_profile.config import EnrichConfig
         return EnrichConfig(
-            model=self.profile_enrich_model or self.profile_model,
+            model=self.profile_enrich_model,
             aws_region=self.aws_region or None,
             aws_profile=self.aws_profile or None,
         )
