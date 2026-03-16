@@ -39,35 +39,13 @@ def _dedup_by_coords(assets: list[Asset], threshold: float = _COORD_DEDUP_THRESH
     return result
 
 
-NATURESENSE_TYPES = [
-    "Agricultural & Food Production", "Electricity Distribution", "Energy Production",
-    "Heavy Industrial & Manufacturing", "IT Facility/Data Center", "Mining Operations",
-    "Office/Housing", "Oil & Gas Facilities",
-    "Other (5km buffer area of influence)", "Other (10km buffer area of influence)",
-    "Other (20km buffer area of influence)", "Other (50km buffer area of influence)",
-    "R&D Facility", "Retail", "Transportation and Logistics Facility", "Warehouse",
-]
-
 EXTRACT_PROMPT_TEMPLATE = """\
 Extract all physical assets belonging to {company} and its subsidiaries from the
-documents below. Physical assets include: facilities, plants, factories, mines,
-quarries, offices, warehouses, data centers, stores, properties, wind/solar farms,
-pipelines, terminals, refineries, and any other permanent physical infrastructure.
+documents below. Only extract assets owned or operated by {company}.
 
-For each asset, extract:
-- asset_name (required): specific name of the facility/site
-- entity_name (required): who owns or operates it
-- entity_isin / parent_name / parent_isin: ownership chain if mentioned
-- entity_stake_pct: ownership percentage 0-100 if mentioned
-- address: full address text if available
-- latitude / longitude: coordinates if available
-- status: Operating / Construction / Planned / Cancelled
-- capacity / capacity_units: numeric capacity and units (e.g., 500 MW)
-- asset_type_raw: free text description of asset type (e.g., "gold mine", "cement plant")
-- naturesense_asset_type: classify into exactly one of: {naturesense_types}
-- supplementary_details: anything extra (fuel type, year built, etc.)
-
-Only extract assets you're confident are real physical locations.
+Physical assets include: facilities, plants, factories, mines, quarries, offices,
+warehouses, data centers, stores, properties, wind/solar farms, pipelines,
+terminals, refineries, and any other permanent physical infrastructure.
 {ald_summary}
 """
 
@@ -121,7 +99,6 @@ async def run_extract(
         prompt = EXTRACT_PROMPT_TEMPLATE.format(
             company=company_name,
             ald_summary=ald_summary,
-            naturesense_types=", ".join(NATURESENSE_TYPES),
         )
 
         extractor_usage = ExtractorUsage()
