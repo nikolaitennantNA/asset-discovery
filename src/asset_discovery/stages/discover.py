@@ -109,6 +109,7 @@ async def run_discover(
     context_doc: str,
     config: Config,
     costs: CostTracker | None = None,
+    verbose: bool = False,
 ) -> list[dict[str, Any]]:
     """Run the discover agent. Returns list of discovered URLs from database.
 
@@ -125,38 +126,45 @@ async def run_discover(
 
     search_tools, builtin_tools = _build_search_tools(config)
 
+    all_tools = [
+        tools.fetch_sitemap,
+        tools.crawl_page,
+        tools.map_domain,
+        tools.probe_urls,
+        tools.save_urls,
+        tools.get_saved_urls,
+    ] + search_tools + builtin_tools
+
     agent = Agent(
         _to_pydantic_ai_model(config.discover_model),
         system_prompt=system_prompt,
-        tools=[
-            tools.fetch_sitemap,
-            tools.crawl_page,
-            tools.map_domain,
-            tools.probe_urls,
-            tools.save_urls,
-            tools.get_saved_urls,
-        ] + search_tools + builtin_tools,
+        tools=all_tools,
     )
 
     start = time.monotonic()
     timeout = config.max_discover_minutes * 60
+    tool_call_count = 0
 
     async with agent:
         try:
-            result = await asyncio.wait_for(
-                agent.run(
-                    "Discover all URLs containing physical asset information for this company. "
-                    "Work systematically: primary site first, then subsidiaries, then regulatory/external. "
-                    "Save URLs as you go.",
-                    usage_limits=UsageLimits(
-                        tool_calls_limit=config.max_discover_tool_calls,
-                        request_limit=None,
-                    ),
+            async with agent.iter(
+                "Discover all URLs containing physical asset information for this company. "
+                "Work systematically: primary site first, then subsidiaries, then regulatory/external. "
+                "Save URLs as you go.",
+                usage_limits=UsageLimits(
+                    tool_calls_limit=config.max_discover_tool_calls,
+                    request_limit=None,
                 ),
-                timeout=timeout,
-            )
-            if costs and result:
-                costs.track_pydantic_ai(result.usage(), config.discover_model, "discover")
+            ) as agent_run:
+                async for node in agent_run:
+                    if verbose and hasattr(node, 'tool_name'):
+                        tool_call_count += 1
+                        args_str = str(getattr(node, 'args', ''))
+                        if len(args_str) > 120:
+                            args_str = args_str[:120] + '...'
+                        show_detail(f"[{tool_call_count}] {node.tool_name}({args_str})")
+            if costs and agent_run.result:
+                costs.track_pydantic_ai(agent_run.result.usage(), config.discover_model, "discover")
         except asyncio.TimeoutError:
             show_detail(f"Discover timed out after {config.max_discover_minutes}m — using URLs saved so far")
         except UsageLimitExceeded:

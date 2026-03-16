@@ -30,6 +30,11 @@ def main():
         choices=["discover", "scrape", "extract", "merge", "qa"],
         help="Resume from this stage, loading prior results from DB/cache",
     )
+    run_parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Show tool calls, search queries, and LLM interactions",
+    )
 
     args = parser.parse_args()
 
@@ -37,12 +42,16 @@ def main():
         if not args.isin and not args.from_file:
             run_parser.error("provide an ISIN or --from-file")
         config = Config()
+        if args.verbose:
+            import logging
+            logging.basicConfig(level=logging.DEBUG, format="  %(name)s: %(message)s")
         result = asyncio.run(run(
             args.isin,
             config,
             stop_after=args.stop_after,
             start_from=args.start_from,
             profile_file=args.from_file,
+            verbose=args.verbose,
         ))
         print(f"\nDone. {result['asset_count']} assets in {result['elapsed']:.1f}s")
     else:

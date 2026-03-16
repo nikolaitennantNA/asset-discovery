@@ -112,6 +112,7 @@ async def run(
     stop_after: str | None = None,
     start_from: str | None = None,
     profile_file: str | None = None,
+    verbose: bool = False,
 ) -> dict[str, Any]:
     """Run the full 6-stage pipeline for a company.
 
@@ -180,7 +181,7 @@ async def run(
     # --- Stage 2: Discover ---
     if _should_run("discover"):
         from .stages.discover import run_discover
-        discovered_urls = await run_discover(issuer_id, context_doc, config, costs)
+        discovered_urls = await run_discover(issuer_id, context_doc, config, costs, verbose=verbose)
     else:
         from .db import get_connection, get_discovered_urls
         show_stage(2, "Loading cached URLs")
