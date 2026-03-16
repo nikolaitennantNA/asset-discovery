@@ -169,7 +169,6 @@ class Config:
     search_provider: str = "exa"
 
     # ── Pipeline caps (config.toml [pipeline]) ────────────────────────────
-    max_scrape_concurrency: int = 20
     page_stale_days: int = 30
     max_discover_tool_calls: int = 200
     max_discover_minutes: int = 15
@@ -254,7 +253,6 @@ class Config:
         self.search_provider = _resolve_str("SEARCH_PROVIDER", search, "provider", "exa")
 
         # ── Pipeline caps ─────────────────────────────────────────────────
-        self.max_scrape_concurrency = _resolve_int("MAX_SCRAPE_CONCURRENCY", pipeline, "max_scrape_concurrency", 20)
         self.page_stale_days = _resolve_int("PAGE_STALE_DAYS", pipeline, "page_stale_days", 30)
         self.max_discover_tool_calls = _resolve_int("MAX_DISCOVER_TOOL_CALLS", pipeline, "max_discover_tool_calls", 200)
         self.max_discover_minutes = _resolve_int("MAX_DISCOVER_MINUTES", pipeline, "max_discover_minutes", 15)
