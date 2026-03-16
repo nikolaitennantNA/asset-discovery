@@ -15,18 +15,17 @@ from ..display import show_detail, show_spinner, show_stage
 from ..models import Asset
 
 MERGE_PROMPT = """\
-You are merging and deduplicating physical assets.
+You are deduplicating physical assets. You receive a list of assets that may \
+contain duplicates — the same physical facility extracted from different pages \
+with slightly different names, addresses, or levels of detail.
 
-Given a batch of newly extracted assets and existing known assets:
-1. Check if each new asset matches an existing one (same physical facility, \
-possibly different name or level of detail).
-2. If match: set matched_asset_id to the existing asset_id. Combine ALL data \
-from both records — keep the richer value for each field. If one has an address \
-and the other has coordinates, keep both. If one has capacity data the other \
-lacks, keep it. Always prefer more complete, more specific information.
-3. If new: set matched_asset_id to null.
+Find duplicates and merge them into one record each. When merging, combine ALL \
+data — keep the richer value for each field. If one has an address and the other \
+has coordinates, keep both. If one has capacity data the other lacks, keep it. \
+Always prefer more complete, more specific information.
 
-Return JSON array of objects with all Asset fields plus matched_asset_id.
+Return a JSON object with an "assets" key containing the deduplicated array.
+Every input asset must appear in the output — either as itself or merged into another.
 """
 
 FINAL_DEDUP_PROMPT = """\
@@ -100,34 +99,12 @@ async def _merge_batch(
     costs: CostTracker | None = None,
 ) -> list[Asset]:
     batch_json = json.dumps([a.model_dump() for a in batch], default=str)
-    existing_summary = json.dumps(
-        [
-            {
-                "asset_id": e["asset_id"], "asset_name": e["asset_name"],
-                "address": e.get("address", ""), "asset_type_raw": e.get("asset_type_raw", ""),
-            }
-            for e in existing[:200]
-        ],
-        default=str,
-    )
-    prior_summary = json.dumps(
-        [
-            {"asset_id": a.asset_id, "asset_name": a.asset_name, "address": a.address}
-            for a in prior_merged[-100:]
-        ],
-        default=str,
-    )
-    prompt = MERGE_PROMPT
 
     response = await litellm.acompletion(
         model=model,
         messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": (
-                f"## New assets\n{batch_json}\n\n"
-                f"## Existing known\n{existing_summary}\n\n"
-                f"## Already merged\n{prior_summary}"
-            )},
+            {"role": "system", "content": MERGE_PROMPT},
+            {"role": "user", "content": f"## Assets to deduplicate\n{batch_json}"},
         ],
         response_format={"type": "json_object"},
     )
