@@ -63,8 +63,8 @@ async def run_merge(
 
         async def _merge_one(batch: list[Asset], batch_num: int) -> list[Asset]:
             merged = await _merge_batch(batch, [], [], config.merge_model, costs)
-            if len(merged) < len(batch) // 2:
-                show_detail(f"Batch {batch_num}: merge returned {len(merged)}/{len(batch)} — keeping originals")
+            if not merged:
+                show_detail(f"Batch {batch_num}: merge returned empty — keeping originals")
                 return batch
             show_detail(f"Batch {batch_num}: {len(batch)} → {len(merged)} after dedup")
             return merged
