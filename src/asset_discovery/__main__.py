@@ -25,6 +25,11 @@ def main():
         choices=["profile", "discover", "scrape", "extract", "merge", "qa"],
         help="Stop after this stage",
     )
+    run_parser.add_argument(
+        "--start-from",
+        choices=["discover", "scrape", "extract", "merge", "qa"],
+        help="Resume from this stage, loading prior results from DB/cache",
+    )
 
     args = parser.parse_args()
 
@@ -36,6 +41,7 @@ def main():
             args.isin,
             config,
             stop_after=args.stop_after,
+            start_from=args.start_from,
             profile_file=args.from_file,
         ))
         print(f"\nDone. {result['asset_count']} assets in {result['elapsed']:.1f}s")

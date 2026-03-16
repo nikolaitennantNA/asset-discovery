@@ -103,10 +103,14 @@ def _save_qa(run_dir: Path, qa_report: QAReport) -> None:
 # re-scrapes at 0 credits. Needs: load profile/context_doc from DB or
 # prior run_dir, and wire up stage-skip logic.
 
+_STAGES = ["profile", "discover", "scrape", "extract", "merge", "qa"]
+
+
 async def run(
     isin: str | None,
     config: Config | None = None,
     stop_after: str | None = None,
+    start_from: str | None = None,
     profile_file: str | None = None,
 ) -> dict[str, Any]:
     """Run the full 6-stage pipeline for a company.
@@ -115,6 +119,8 @@ async def run(
         isin: Company ISIN or issuer_id. Optional when profile_file is given.
         config: Pipeline config. Defaults from env vars.
         stop_after: Stop after stage (profile/discover/scrape/extract/merge/qa).
+        start_from: Resume from this stage, loading prior results from DB.
+            Profile is always loaded (from DB or file) regardless.
         profile_file: Path to a JSON profile file. When set, Postgres is not
             queried for the profile and the issuer_id is taken from the file.
 
@@ -125,18 +131,23 @@ async def run(
     stages_run: list[str] = []
     costs = CostTracker()
 
-    # --- Stage 1: Profile ---
+    def _should_run(stage: str) -> bool:
+        if start_from is None:
+            return True
+        return _STAGES.index(stage) >= _STAGES.index(start_from)
+
+    # --- Stage 1: Profile (always runs — needed by all downstream stages) ---
     from .display import show_stage
     show_stage(1, "Profiling")
 
     import corp_profile
 
-    if config.profile_research:
+    if config.profile_research and _should_run("profile"):
         profile, context_doc = corp_profile.research(
             isin,
             config=config.profile_research_config(),
         )
-    else:
+    elif _should_run("profile"):
         needs_llm = config.profile_enrich or config.profile_web
         profile, context_doc = corp_profile.run(
             identifier=isin,
@@ -145,6 +156,12 @@ async def run(
             web=config.profile_web,
             enrich_config=config.profile_enrich_config() if needs_llm else None,
             web_config=config.profile_web_config() if config.profile_web else None,
+        )
+    else:
+        # Skipping profile LLM stages — load from DB without enrichment
+        profile, context_doc = corp_profile.run(
+            identifier=isin,
+            from_file=profile_file,
         )
 
     # Use profile's issuer_id as the canonical identifier for all downstream stages
@@ -161,9 +178,20 @@ async def run(
         return _result([], None, start, stages_run)
 
     # --- Stage 2: Discover ---
-    from .stages.discover import run_discover
+    if _should_run("discover"):
+        from .stages.discover import run_discover
+        discovered_urls = await run_discover(issuer_id, context_doc, config, costs)
+    else:
+        from .db import get_connection, get_discovered_urls
+        show_stage(2, "Loading cached URLs")
+        conn = get_connection(config)
+        try:
+            discovered_urls = get_discovered_urls(conn, issuer_id)
+        finally:
+            conn.close()
+        from .display import show_detail
+        show_detail(f"Loaded {len(discovered_urls)} cached URLs from DB")
 
-    discovered_urls = await run_discover(issuer_id, context_doc, config, costs)
     stages_run.append("discover")
     _save_urls(run_dir, discovered_urls)
 
