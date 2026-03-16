@@ -2,25 +2,82 @@
 
 from __future__ import annotations
 
+import csv
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
 
-# naturesense_asset_type enum — used in Field description below
-NATURESENSE_TYPES = [
-    "Agricultural & Food Production", "Electricity Distribution", "Energy Production",
-    "Heavy Industrial & Manufacturing", "IT Facility/Data Center", "Mining Operations",
-    "Office/Housing", "Oil & Gas Facilities",
-    "Other (5km buffer area of influence)", "Other (10km buffer area of influence)",
-    "Other (20km buffer area of influence)", "Other (50km buffer area of influence)",
-    "R&D Facility", "Retail", "Transportation and Logistics Facility", "Warehouse",
-]
+_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 
 
-class Asset(BaseModel):
-    """Asset extraction model — TREX ALD aligned."""
+# --- NatureSense asset types — loaded from data/naturesense_asset_types.csv ---
 
-    # --- Extracted by LLM ---
+def _load_naturesense_types() -> list[dict[str, str]]:
+    """Load NatureSense asset types from CSV."""
+    path = _DATA_DIR / "naturesense_asset_types.csv"
+    with path.open(newline="", encoding="utf-8") as f:
+        return [
+            {
+                "name": row["asset_type"].strip(),
+                "buffer_m": row.get("buffer_distance_m", ""),
+                "description": row.get("description", ""),
+            }
+            for row in csv.DictReader(f)
+            if row.get("asset_type", "").strip()
+        ]
+
+
+NATURESENSE_DATA: list[dict[str, str]] = _load_naturesense_types()
+NATURESENSE_TYPES: list[str] = [n["name"] for n in NATURESENSE_DATA]
+
+
+def naturesense_reference_block() -> str:
+    """Build a NatureSense reference string for inclusion in extraction prompts."""
+    lines = []
+    for n in NATURESENSE_DATA:
+        line = f"- {n['name']}"
+        if n["description"]:
+            line += f": {n['description']}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+# --- GICS 6-digit industry codes — loaded from data/gics_industries.csv ---
+
+def _load_gics_industries() -> list[dict[str, str]]:
+    """Load GICS industries from CSV."""
+    path = _DATA_DIR / "gics_industries.csv"
+    with path.open(newline="", encoding="utf-8") as f:
+        return [
+            {
+                "code": row["industry_code"],
+                "name": row["industry_name"],
+                "description": row.get("industry_description", ""),
+            }
+            for row in csv.DictReader(f)
+            if row.get("industry_code")
+        ]
+
+
+GICS_INDUSTRIES: list[dict[str, str]] = _load_gics_industries()
+GICS_CODES: list[str] = [g["code"] for g in GICS_INDUSTRIES]
+
+
+def gics_reference_block() -> str:
+    """Build a GICS reference string for inclusion in extraction prompts."""
+    lines = []
+    for g in GICS_INDUSTRIES:
+        line = f"- {g['code']}: {g['name']}"
+        if g["description"]:
+            line += f" — {g['description']}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+class ExtractedAsset(BaseModel):
+    """Schema passed to the extraction LLM — only fields the model should fill."""
+
     asset_name: str = Field(
         description="Facility or site proper name (e.g. 'Hornsea 2 Offshore Wind Farm'). "
         "Do not include city, state, or country in the name.",
@@ -79,7 +136,13 @@ class Asset(BaseModel):
     )
     naturesense_asset_type: str = Field(
         default="",
-        description="Classify into one of: " + ", ".join(NATURESENSE_TYPES),
+        description="Classify into one of: " + ", ".join(NATURESENSE_TYPES)
+        + ". See the NatureSense reference in the prompt for descriptions.",
+    )
+    industry_code: str = Field(
+        default="",
+        description="6-digit GICS industry code for this asset. "
+        "See the GICS reference in the prompt for valid codes and descriptions.",
     )
     supplementary_details: dict[str, str] = Field(
         default_factory=dict,
@@ -87,9 +150,11 @@ class Asset(BaseModel):
         "(e.g. fuel_type, year_built, technology, additional_capacity).",
     )
 
-    # --- Set by pipeline, not by LLM ---
+
+class Asset(ExtractedAsset):
+    """Full asset with pipeline-set fields added after extraction."""
+
     asset_id: str = ""
-    industry_code: str = ""
     date_researched: str = ""
     attribution_source: str = ""
     source_url: str = ""

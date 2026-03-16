@@ -117,6 +117,7 @@ class Config:
     discover_worker_model: str = ""
     extract_model: str = ""
     count_model: str = ""
+    summary_model: str = ""
     merge_model: str = ""
     qa_model: str = ""
 
@@ -221,6 +222,7 @@ class Config:
             self.discover_model = fallback
         self.extract_model = _resolve_str("EXTRACT_MODEL", models, "extract", bedrock_default)
         self.count_model = _resolve_str("COUNT_MODEL", models, "count", haiku)
+        self.summary_model = _resolve_str("SUMMARY_MODEL", models, "summary", haiku)
         self.merge_model = _resolve_str("MERGE_MODEL", models, "merge", "openai/gpt-5-mini")
         self.qa_model = _resolve_str("QA_MODEL", models, "qa", bedrock_default)
 

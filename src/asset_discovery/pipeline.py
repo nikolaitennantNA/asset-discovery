@@ -221,7 +221,7 @@ async def run(
     from .stages.extract import run_extract
 
     existing_summary = _build_existing_summary(profile)
-    assets = await run_extract(issuer_id, profile.legal_name, pages, config, existing_summary, costs)
+    assets = await run_extract(issuer_id, profile.legal_name, pages, config, existing_summary, costs, profile=profile)
     stages_run.append("extract")
     _save_extractions(run_dir, assets)
 
@@ -231,7 +231,7 @@ async def run(
     # --- Stage 5: Merge ---
     from .stages.merge import run_merge
 
-    assets = await run_merge(issuer_id, assets, config, industry_code=profile.primary_industry, costs=costs)
+    assets = await run_merge(issuer_id, assets, config, costs=costs)
     stages_run.append("merge")
     _save_merged(run_dir, assets)
 

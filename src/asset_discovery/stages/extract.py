@@ -14,7 +14,7 @@ from ..config import Config
 from ..cost import CostTracker
 from ..db import get_connection, get_extraction_result, save_extraction_result, url_hash
 from ..display import show_stage
-from ..models import Asset
+from ..models import Asset, ExtractedAsset, gics_reference_block, naturesense_reference_block
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +52,19 @@ documents below. Only extract assets owned or operated by {company}.
 Physical assets include: facilities, plants, factories, mines, quarries, offices,
 warehouses, data centers, stores, properties, wind/solar farms, pipelines,
 terminals, refineries, and any other permanent physical infrastructure.
+
+## Company Context
+{company_context}
 {ald_summary}
+
+## NatureSense Asset Type Reference
+Classify each asset's naturesense_asset_type using the descriptions below:
+{naturesense_reference}
+
+## GICS Industry Code Reference
+Assign each asset's industry_code (6-digit) based on the asset type. Use the
+descriptions below to pick the best-fit industry for each asset:
+{gics_reference}
 """
 
 COUNT_PROMPT_TEMPLATE = """\
@@ -63,10 +75,61 @@ refineries, etc. Count each unique asset once.
 """
 
 
+async def _summarize_description(description: str, company_name: str, model: str) -> str:
+    """Use a cheap model to summarize the company description for extraction context."""
+    import litellm
+    response = await litellm.acompletion(
+        model=model,
+        messages=[
+            {"role": "system", "content": (
+                "Summarize this company description in 1-2 sentences for an asset extraction agent. "
+                "Focus on: what the company does, what industry, key geographies, and what types of "
+                "physical assets it likely has. Be concise."
+            )},
+            {"role": "user", "content": description},
+        ],
+        max_tokens=150,
+    )
+    return response.choices[0].message.content.strip()
+
+
+async def _build_company_context(profile, summary_model: str) -> str:
+    """Build a compact company context block from the profile.
+
+    Accepts any object with CompanyProfile-like attributes (duck-typed).
+    Uses a cheap model to summarize the description.
+    """
+    parts = [f"**{profile.legal_name}**"]
+
+    ids = []
+    if getattr(profile, "isin_list", None):
+        ids.append(f"ISIN: {', '.join(profile.isin_list)}")
+    if getattr(profile, "lei", None):
+        ids.append(f"LEI: {profile.lei}")
+    if ids:
+        parts.append(" | ".join(ids))
+
+    if getattr(profile, "description", ""):
+        summary = await _summarize_description(
+            profile.description, profile.legal_name, summary_model,
+        )
+        parts.append(summary)
+
+    if getattr(profile, "subsidiaries", None):
+        sub_names = [s.legal_name for s in profile.subsidiaries[:20]]
+        parts.append(f"Subsidiaries: {', '.join(sub_names)}")
+
+    if getattr(profile, "estimated_asset_count", None):
+        parts.append(f"Estimated total assets: ~{profile.estimated_asset_count}")
+
+    return "\n".join(parts)
+
+
 async def run_extract(
     issuer_id: str, company_name: str, pages: list[dict[str, Any]],
     config: Config, existing_assets_summary: str | None = None,
     costs: CostTracker | None = None,
+    profile: Any = None,
 ) -> list[Asset]:
     """Extract assets from scraped pages, skipping cached extractions."""
     show_stage(4, "Extracting assets")
@@ -109,9 +172,16 @@ async def run_extract(
                 "Extract all assets you find -- dedup happens later."
             )
 
+        company_context = (
+            await _build_company_context(profile, config.summary_model)
+            if profile else company_name
+        )
         prompt = EXTRACT_PROMPT_TEMPLATE.format(
             company=company_name,
+            company_context=company_context,
             ald_summary=ald_summary,
+            naturesense_reference=naturesense_reference_block(),
+            gics_reference=gics_reference_block(),
         )
         count_prompt = COUNT_PROMPT_TEMPLATE.format(company=company_name)
         extractor_cfg = config.extractor_config()
@@ -142,11 +212,11 @@ async def run_extract(
                 normal_docs.append(doc)
 
         # Normal extraction for standard pages
-        new_assets: list[Asset] = []
+        extracted: list[ExtractedAsset] = []
         if normal_docs:
             extractor_usage = ExtractorUsage()
-            new_assets = await extract(
-                documents=normal_docs, schema=Asset, prompt=prompt,
+            extracted = await extract(
+                documents=normal_docs, schema=ExtractedAsset, prompt=prompt,
                 model=config.extract_model, max_concurrency=config.extractor_default_concurrency,
                 config=extractor_cfg, usage=extractor_usage,
             )
@@ -160,7 +230,7 @@ async def run_extract(
         for doc, estimated_count in exhaustive_docs:
             exhaust_usage = ExtractorUsage()
             exhaustive_assets = await extract_exhaustive(
-                doc, Asset, prompt, config.extract_model, estimated_count,
+                doc, ExtractedAsset, prompt, config.extract_model, estimated_count,
                 config=extractor_cfg, usage=exhaust_usage,
             )
             if costs:
@@ -168,7 +238,10 @@ async def run_extract(
                     config.extract_model,
                     exhaust_usage.input_tokens, exhaust_usage.output_tokens, "extract",
                 )
-            new_assets.extend(exhaustive_assets)
+            extracted.extend(exhaustive_assets)
+
+        # Convert ExtractedAsset -> Asset (adds pipeline fields)
+        new_assets = [Asset(**e.model_dump()) for e in extracted]
 
         # Save extraction results per page.
         all_dumped = [a.model_dump() for a in new_assets]
