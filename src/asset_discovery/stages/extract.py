@@ -142,7 +142,6 @@ async def run_extract(
         to_extract: list[dict[str, Any]] = []
 
         if skip_cache:
-            from ..display import show_detail
             show_detail(f"Bypassing extraction cache ({len(pages)} pages to extract)")
             to_extract = [p for p in pages if p.get("markdown")]
         else:
@@ -161,7 +160,6 @@ async def run_extract(
                 else:
                     to_extract.append(page)
             if all_assets:
-                from ..display import show_detail
                 show_detail(f"{len(all_assets)} assets loaded from cache, {len(to_extract)} pages to extract")
 
         if not to_extract:
