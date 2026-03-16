@@ -5,50 +5,48 @@
 # Env vars override any value below.
 #
 # Resolution order per field: env var > this file > hardcoded default.
-#
-# For the full list of keys per section, see the matching sub-module config:
-#   [profile]   → corp_profile.enrich.EnrichConfig
-#   [scraper]   → web_scraper.config.ScraperConfig
-#   [extractor] → doc_extractor.config.ExtractorConfig
-#   [rag]       → rag.config.RAGConfig
 
 # ── Models ────────────────────────────────────────────────────────────────────
-# Any litellm-supported model string.
+# Format: "provider/model" — supports bedrock/ and openai/ prefixes.
 [models]
-profile.enrich = "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0"
-profile.research = "bedrock/us.anthropic.claude-opus-4-6-v1"
-profile.web = "bedrock/us.anthropic.claude-sonnet-4-6-v1"
+profile.enrich = "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0"   # clean + refine stages
+profile.research = "bedrock/us.anthropic.claude-opus-4-6-v1"             # research-from-scratch LLM
+profile.web = "bedrock/us.anthropic.claude-sonnet-4-6"                # web search enrichment LLM
 discover = "bedrock/us.anthropic.claude-opus-4-6-v1"
 extract = "bedrock/us.anthropic.claude-opus-4-6-v1"
 count = "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0"
-merge = "bedrock/us.anthropic.claude-sonnet-4-6-v1"
+merge = "bedrock/us.anthropic.claude-sonnet-4-6"
 qa = "bedrock/us.anthropic.claude-opus-4-6-v1"
 
 # ── corp-profile ──────────────────────────────────────────────────────────────
+# Pipeline modes (pick one):
+#   enrich=true, web=false  → clean → LLM enrich → refine (no internet)
+#   web=true                → clean → web search → refine (replaces enrich)
+#   research=true           → build profile from scratch via LLM + web search
+#
+# Web search uses Exa for all Bedrock models. OpenAI models can use built-in
+# search (provider="openai") or Exa (provider="exa").
 [profile]
-enrich = true
-
-research = false
-research_provider = "exa"
-
-web = true
-web_provider = "auto"
+enrich = false                # Ignored when web=true (web replaces enrich)
+web = true                    # Web search enrichment via Exa
+web_provider = "exa"          # "exa" (explicit), "openai" (built-in), "auto" (exa for bedrock)
+research = false              # Set true to build profile from scratch (ignores enrich/web)
+research_provider = "exa"     # "exa", "openai", or "auto"
 
 # ── web-scraper ───────────────────────────────────────────────────────────────
 [scraper]
-request_mode = "smart" # smart | http | chrome
+request_mode = "smart"        # smart | http | chrome
 proxy_enabled = true
-# default_proxy = ""                # residential | mobile | isp (empty = Spider default)
+# default_proxy = ""          # residential | mobile | isp (empty = Spider default)
 readability = false
 filter_output_main_only = true
 lite_mode = false
-# max_credits_per_page = 0          # 0 = no limit
-# max_credits_allowed = 0           # 0 = no limit
+# max_credits_per_page = 0    # 0 = no limit
+# max_credits_allowed = 0     # 0 = no limit
 
 # ── doc-extractor ─────────────────────────────────────────────────────────────
-# Increase max_batch_tokens for models with larger context (e.g. 300K+ for GPT-5.2).
 [extractor]
-max_batch_tokens = 120_000
+max_batch_tokens = 120_000    # Increase for models with larger context windows
 
 # ── rag ───────────────────────────────────────────────────────────────────────
 # [rag]
@@ -58,9 +56,9 @@ max_batch_tokens = 120_000
 [aws]
 region = "us-east-2"
 
-# ── Search ────────────────────────────────────────────────────────────────────
+# ── Search (for discover stage, not corp-profile) ────────────────────────────
 [search]
-provider = "exa" # exa | brave | tavily | openai
+provider = "exa"              # exa | brave | tavily | openai
 
 # ── Pipeline caps ─────────────────────────────────────────────────────────────
 [pipeline]
