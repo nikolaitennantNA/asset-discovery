@@ -125,19 +125,6 @@ class Config:
     profile_web_model: str = ""
     profile_web_provider: str = "auto"
 
-    # ── web-scraper (config.toml [scraper]) ───────────────────────────────
-    # Keys mirror ScraperConfig: base_url, batch_limit, poll_interval_s,
-    # client_timeout_s, strategy, default_timeout_ms, default_proxy
-    scraper_base_url: str = "https://api.spider.cloud"
-    scraper_batch_limit: int = 10
-    scraper_poll_interval_s: float = 2.0
-    scraper_client_timeout_s: float = 120.0
-    scraper_strategy: str = "http"
-    scraper_default_timeout_ms: int = 30_000
-    scraper_default_proxy: bool = True
-    scraper_default_proxy_mode: str = "auto"
-    scraper_remove_overlays: bool = True
-
     # ── doc-extractor (config.toml [extractor]) ───────────────────────────
     # Keys mirror ExtractorConfig: max_batch_tokens, max_page_tokens,
     # overlap_tokens, max_retries, default_concurrency
@@ -179,7 +166,6 @@ class Config:
         toml = _load_toml()
         models = toml.get("models", {})
         profile = toml.get("profile", {})
-        scraper = toml.get("scraper", {})
         extractor = toml.get("extractor", {})
         rag = toml.get("rag", {})
         aws = toml.get("aws", {})
@@ -214,16 +200,6 @@ class Config:
         self.profile_web_provider = _resolve_str("PROFILE_WEB_PROVIDER", profile, "web_provider", "auto")
 
         # ── web-scraper (keys mirror ScraperConfig) ──────────────────────
-        self.scraper_base_url = _resolve_str("SCRAPER_BASE_URL", scraper, "base_url", "https://api.spider.cloud")
-        self.scraper_batch_limit = _resolve_int("SCRAPER_BATCH_LIMIT", scraper, "batch_limit", 10)
-        self.scraper_poll_interval_s = _resolve_float("SCRAPER_POLL_INTERVAL_S", scraper, "poll_interval_s", 2.0)
-        self.scraper_client_timeout_s = _resolve_float("SCRAPER_CLIENT_TIMEOUT_S", scraper, "client_timeout_s", 120.0)
-        self.scraper_strategy = _resolve_str("SCRAPER_STRATEGY", scraper, "strategy", "http")
-        self.scraper_default_timeout_ms = _resolve_int("SCRAPER_DEFAULT_TIMEOUT_MS", scraper, "default_timeout_ms", 30_000)
-        self.scraper_default_proxy = _resolve_bool("SCRAPER_DEFAULT_PROXY", scraper, "default_proxy", False)
-        self.scraper_default_proxy_mode = _resolve_str("SCRAPER_DEFAULT_PROXY_MODE", scraper, "default_proxy_mode", "")
-        self.scraper_remove_overlays = _resolve_bool("SCRAPER_REMOVE_OVERLAYS", scraper, "remove_overlays", True)
-
         # ── doc-extractor (keys mirror ExtractorConfig) ──────────────────
         self.extractor_max_batch_tokens = _resolve_int("EXTRACTOR_MAX_BATCH_TOKENS", extractor, "max_batch_tokens", 120_000)
         self.extractor_max_page_tokens = _resolve_int("EXTRACTOR_MAX_PAGE_TOKENS", extractor, "max_page_tokens", 60_000)
