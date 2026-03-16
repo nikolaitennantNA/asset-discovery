@@ -439,18 +439,6 @@ provides-extras = ["llm"]
 dev = [{ name = "pytest", specifier = ">=8.0" }]
 
 [[package]]
-name = "crawl4ai-cloud-sdk"
-version = "0.2.6"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "httpx" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d4/d3/14f2f4727ce24d9db0ae3e838d81e22e11c6ef41391cb9b31d2e4ec484ea/crawl4ai_cloud_sdk-0.2.6.tar.gz", hash = "sha256:142be946f1ee376092ea1caa752fc9491dd281eec4a11ded9fe3310420465957", size = 39121, upload-time = "2026-03-09T14:53:15.259Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/2e/d6799e8dfaf2b3820097e8071fe0cc4d5ea1d8fffa60d887c34eae43ce21/crawl4ai_cloud_sdk-0.2.6-py3-none-any.whl", hash = "sha256:7952783ddd573a5392cbdde07560e25d2000ae11312b56a71d91b093da87070e", size = 36839, upload-time = "2026-03-09T14:53:13.966Z" },
-]
-
-[[package]]
 name = "cryptography"
 version = "46.0.5"
 source = { registry = "https://pypi.org/simple" }
@@ -2489,23 +2477,23 @@ wheels = [
 
 [[package]]
 name = "web-scraper"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "../web-scraper" }
 dependencies = [
-    { name = "crawl4ai-cloud-sdk" },
     { name = "html2text" },
     { name = "httpx" },
     { name = "pydantic" },
+    { name = "requests" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "crawl4ai-cloud-sdk", specifier = ">=0.2.0" },
     { name = "html2text", specifier = ">=2025.4.15" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "pydantic", specifier = ">=2.12.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.25.0" },
+    { name = "requests", specifier = ">=2.32.5" },
     { name = "respx", marker = "extra == 'test'", specifier = ">=0.22.0" },
 ]
 provides-extras = ["test"]
