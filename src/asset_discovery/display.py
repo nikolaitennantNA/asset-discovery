@@ -63,22 +63,23 @@ def show_warning(msg: str) -> None:
 
 
 def show_done(parts: list[str], elapsed: float | None = None) -> None:
-    """Print a consistent Done line: rule + green text + spacing.
+    """Print a consistent Done line: rule + centered green text + spacing.
 
     Usage: show_done(["495 scraped", "98%", "2 failed"], elapsed=114.0)
     """
     if elapsed is not None:
         mins, secs = divmod(int(elapsed), 60)
         parts.append(f"{mins}m {secs:02d}s" if mins else f"{secs}s")
-    console.print(Text("  " + "─" * 45, style="dim"))
-    t = Text("  Done", style="bold green")
+    console.print()
+    console.rule(style="dim")
+    t = Text("Done", style="bold green")
     for part in parts:
         t.append("  ·  ", style="dim")
         if "failed" in part.lower():
             t.append(part, style="bold red")
         else:
             t.append(part, style="bold")
-    console.print(t)
+    console.print(t, justify="center")
     console.print()
 
 
@@ -198,7 +199,7 @@ def show_assets_table(
     if len(assets) > max_rows:
         table.add_row("...", f"+{len(assets) - max_rows} more", "", "", "")
 
-    console.print(table)
+    console.print(table, justify="center")
 
 
 def show_coverage_flags(qa_report: Any) -> None:
@@ -224,7 +225,7 @@ def show_coverage_flags(qa_report: Any) -> None:
             getattr(flag, "flag_type", ""),
             getattr(flag, "description", ""),
         )
-    console.print(table)
+    console.print(table, justify="center")
 
 
 def show_cost_summary(
@@ -275,7 +276,7 @@ def show_cost_summary(
         else:
             table.add_row("Duration", f"{secs}s")
 
-    console.print(table)
+    console.print(table, justify="center")
 
 
 # ── Discover stage display ──────────────────────────────────────────────────

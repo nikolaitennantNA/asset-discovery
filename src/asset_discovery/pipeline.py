@@ -325,24 +325,26 @@ async def run(
         if a.geocodable and a.latitude is None and a.longitude is None and a.address
     ]
     if assets_needing_geocode:
-        from .display import show_detail
-        show_detail(f"Geocoding {len(assets_needing_geocode)} assets without coordinates...")
+        import logging
+        logging.getLogger("geo_resolve").setLevel(logging.WARNING)
         try:
             from geo_resolve import Geocoder
+            from .display import show_spinner
             gc = Geocoder()
             geocoded = 0
-            for asset in assets_needing_geocode:
-                try:
-                    lat, lon = gc.geocode(asset.address)
-                    if lat and lon:
-                        asset.latitude = lat
-                        asset.longitude = lon
-                        geocoded += 1
-                except Exception:
-                    pass
+            with show_spinner(f"  Geocoding {len(assets_needing_geocode)} assets..."):
+                for asset in assets_needing_geocode:
+                    try:
+                        lat, lon = gc.geocode(asset.address)
+                        if lat and lon:
+                            asset.latitude = lat
+                            asset.longitude = lon
+                            geocoded += 1
+                    except Exception:
+                        pass
             show_detail(f"Geocoded {geocoded}/{len(assets_needing_geocode)} assets")
         except ImportError:
-            show_detail("geo-resolve not installed — skipping geocoding")
+            pass
         except Exception as e:
             show_detail(f"Geocoding failed: {e}")
 
@@ -377,11 +379,14 @@ async def run(
 
     # QA summary
     if qa_report.summary:
+        from rich.panel import Panel
         console.print()
-        t = Text("  QA: ", style="bold")
-        t.append(qa_report.summary, style="italic")
-        console.print(t)
-        console.print()
+        console.print(Panel(
+            qa_report.summary,
+            title="[bold]QA Summary[/bold]",
+            border_style="cyan",
+            padding=(1, 2),
+        ))
 
     show_assets_table(assets)
     show_coverage_flags(qa_report)
