@@ -94,6 +94,8 @@ Scraping both means the extractor finds every asset twice. Keep whichever has
 richer data (coordinates, capacity, details) and remove the other.
 
 The scraper handles PDFs, JS-heavy pages, and store locators. Note "pdf" for PDF URLs.
+If you find a store locator or map widget page, note "store_locator" in the save notes
+and set wait_for to the content container CSS selector if you can identify it.
 """
 
 
