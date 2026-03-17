@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from typing import Any
+from urllib.parse import urlparse
 
+from bs4 import BeautifulSoup
 from doc_extractor import (
     extract, extract_exhaustive, estimate_count,
     Document, Usage as ExtractorUsage, EXHAUSTIVE_THRESHOLD,
@@ -17,6 +21,273 @@ from ..display import show_detail, show_spinner, show_stage
 from ..models import Asset, ExtractedAsset, gics_reference_block, naturesense_reference_block
 
 log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Deterministic extraction — LLM generates schema once, apply to all pages
+# ---------------------------------------------------------------------------
+
+_SCHEMA_PROMPT = """\
+You are analyzing a web page's HTML to create a reusable CSS selector schema for
+extracting physical asset information. This schema will be applied to hundreds of
+pages with the same template.
+
+Look at this HTML and create a JSON object mapping asset fields to CSS selectors.
+Use standard CSS selector syntax. For HTML attributes (like lat, lon, data-lat),
+use the format "selector@attribute".
+
+Required fields to map (skip any that don't exist in the HTML):
+- asset_name: the facility/store/site name
+- store_number: any identifier like "#33" or "Store 102"
+- address: full street address
+- city, state, zip: if separate from address
+- latitude: coordinate (could be an attribute on a div, or in a Google Maps URL)
+- longitude: coordinate
+- phone: phone number
+- entity_name: company name if shown
+
+Also include a "latitude_source" field set to one of:
+- "attribute" if coords are HTML attributes (e.g. <div lat="33.4">)
+- "google_maps_url" if coords are in a Google Maps link href
+- "text" if coords appear as text
+- "none" if no coordinates found
+
+Return ONLY a JSON object, no explanation. Example:
+{{
+  "asset_name": "h1",
+  "store_number": ".store-number",
+  "address": ".store-address a",
+  "latitude": "#store-map@lat",
+  "longitude": "#store-map@lon",
+  "latitude_source": "attribute",
+  "phone": "a[href^='tel:']"
+}}
+
+Here is the HTML (first 8000 chars):
+
+{html}
+"""
+
+
+async def _generate_schema(html: str, model: str, costs: CostTracker | None) -> dict | None:
+    """Use LLM to generate CSS selector schema from a sample page's HTML."""
+    import litellm
+
+    truncated = html[:8000]
+    try:
+        response = await litellm.acompletion(
+            model=model,
+            messages=[
+                {"role": "user", "content": _SCHEMA_PROMPT.format(html=truncated)},
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=500,
+        )
+        content = response.choices[0].message.content.strip()
+        schema = json.loads(content)
+        if costs:
+            costs.track_llm(
+                model,
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens,
+                "schema",
+            )
+        return schema
+    except Exception as e:
+        log.warning("Schema generation failed: %s", e)
+        return None
+
+
+def _apply_schema(html: str, schema: dict) -> dict[str, str]:
+    """Apply CSS selector schema to extract fields from HTML."""
+    soup = BeautifulSoup(html, "html.parser")
+    result: dict[str, str] = {}
+
+    for field, selector in schema.items():
+        if field in ("latitude_source",):
+            result[field] = selector
+            continue
+
+        # Handle attribute extraction: "selector@attr"
+        if "@" in selector:
+            css, attr = selector.rsplit("@", 1)
+            el = soup.select_one(css)
+            if el and el.get(attr):
+                result[field] = el[attr].strip()
+        else:
+            el = soup.select_one(selector)
+            if el:
+                text = el.get_text(strip=True)
+                if text:
+                    result[field] = text
+
+    # Extract coordinates from Google Maps URL if that's the source
+    if schema.get("latitude_source") == "google_maps_url" and not result.get("latitude"):
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if "google.com/maps" in href:
+                m = re.search(r"query=(-?\d+\.?\d*)[,%2C]+(-?\d+\.?\d*)", href)
+                if not m:
+                    m = re.search(r"@(-?\d+\.\d+),(-?\d+\.\d+)", href)
+                if m:
+                    result["latitude"] = m.group(1)
+                    result["longitude"] = m.group(2)
+                    break
+
+    return result
+
+
+def _fields_to_asset(fields: dict, company_name: str, template: dict) -> Asset | None:
+    """Convert extracted fields dict to an Asset, using template for common fields."""
+    name_parts = []
+    if fields.get("asset_name"):
+        name_parts.append(fields["asset_name"])
+    if fields.get("store_number"):
+        num = fields["store_number"]
+        if num not in (fields.get("asset_name") or ""):
+            name_parts.append(num)
+    asset_name = " - ".join(name_parts) if name_parts else ""
+
+    address_parts = []
+    if fields.get("address"):
+        address_parts.append(fields["address"])
+    elif fields.get("city"):
+        parts = [fields.get("city", ""), fields.get("state", "")]
+        if fields.get("zip"):
+            parts.append(fields["zip"])
+        address_parts.append(", ".join(p for p in parts if p))
+    address = " ".join(address_parts)
+
+    lat = None
+    lon = None
+    try:
+        if fields.get("latitude"):
+            lat = float(fields["latitude"])
+        if fields.get("longitude"):
+            lon = float(fields["longitude"])
+    except (ValueError, TypeError):
+        pass
+
+    if not asset_name and not address and lat is None:
+        return None
+
+    supplementary = {}
+    if fields.get("phone"):
+        supplementary["phone"] = fields["phone"]
+
+    return Asset(
+        asset_name=asset_name,
+        entity_name=fields.get("entity_name") or template.get("entity_name", company_name),
+        latitude=lat,
+        longitude=lon,
+        address=address,
+        status="Operating",
+        entity_stake_pct=100,
+        asset_type_raw=template.get("asset_type_raw", ""),
+        naturesense_asset_type=template.get("naturesense_asset_type", ""),
+        industry_code=template.get("industry_code", ""),
+        supplementary_details=supplementary,
+    )
+
+
+_DETERMINISTIC_MIN_GROUP = 10
+
+
+async def _try_deterministic_extraction(
+    pages: list[dict[str, Any]],
+    company_name: str,
+    model: str,
+    costs: CostTracker | None,
+) -> tuple[list[Asset], list[dict[str, Any]]]:
+    """Try deterministic extraction on groups of template pages.
+
+    Groups pages by URL prefix. For large groups (>10 pages with raw_html),
+    generates a CSS selector schema from one sample page, validates it on
+    a second sample, then applies to all pages in the group.
+
+    Returns (deterministic_assets, remaining_pages_for_llm).
+    """
+    # Group pages by URL prefix (depth 2)
+    prefix_groups: dict[str, list[dict]] = {}
+    for page in pages:
+        url = page.get("url", "")
+        path = urlparse(url).path or "/"
+        parts = [p for p in path.split("/") if p]
+        prefix = "/" + "/".join(parts[:2]) + "/" if len(parts) >= 2 else "/"
+        prefix_groups.setdefault(prefix, []).append(page)
+
+    deterministic_assets: list[Asset] = []
+    remaining: list[dict] = []
+
+    # Sort by group size descending — only try the largest groups
+    sorted_prefixes = sorted(prefix_groups.items(), key=lambda x: -len(x[1]))
+
+    for prefix, group in sorted_prefixes:
+        # Only try deterministic for large groups with raw HTML
+        pages_with_html = [p for p in group if p.get("raw_html")]
+        if len(pages_with_html) < _DETERMINISTIC_MIN_GROUP:
+            remaining.extend(group)
+            continue
+
+        # Generate schema from first sample
+        sample = pages_with_html[0]
+        schema = await _generate_schema(sample["raw_html"], model, costs)
+        if not schema:
+            remaining.extend(group)
+            continue
+
+        # Validate on second sample
+        validation = _apply_schema(pages_with_html[1]["raw_html"], schema)
+        if not validation.get("asset_name") and not validation.get("address"):
+            log.info("Schema validation failed for %s — falling back to LLM", prefix)
+            remaining.extend(group)
+            continue
+
+        # Also LLM-extract the first sample to get template fields
+        # (asset_type_raw, naturesense_asset_type, industry_code)
+        sample_doc = Document(
+            content=sample["markdown"],
+            metadata={"url": sample["url"]},
+        )
+        try:
+            sample_assets = await extract(
+                documents=[sample_doc], schema=ExtractedAsset,
+                prompt=f"Extract the physical asset from this page for {company_name}.",
+                model=model, max_concurrency=1,
+            )
+            template = {}
+            if sample_assets:
+                sa = sample_assets[0]
+                template = {
+                    "entity_name": sa.entity_name,
+                    "asset_type_raw": sa.asset_type_raw,
+                    "naturesense_asset_type": sa.naturesense_asset_type,
+                    "industry_code": sa.industry_code,
+                }
+        except Exception:
+            template = {"entity_name": company_name}
+
+        # Apply schema to all pages in the group
+        extracted_count = 0
+        for page in group:
+            html = page.get("raw_html", "")
+            if not html:
+                remaining.append(page)
+                continue
+            fields = _apply_schema(html, schema)
+            asset = _fields_to_asset(fields, company_name, template)
+            if asset:
+                asset.source_url = page.get("url", "")
+                deterministic_assets.append(asset)
+                extracted_count += 1
+            else:
+                remaining.append(page)
+
+        show_detail(
+            f"  Deterministic: {extracted_count} assets from {len(group)} pages ({prefix})"
+        )
+
+    return deterministic_assets, remaining
 
 
 _COORD_DEDUP_THRESHOLD = 0.0005  # ~55m at equator — matches signals.py
@@ -169,6 +440,17 @@ async def run_extract(
                     to_extract.append(page)
             if all_assets:
                 show_detail(f"{len(all_assets)} assets loaded from cache, {len(to_extract)} pages to extract")
+
+        if not to_extract:
+            return all_assets
+
+        # --- Deterministic extraction for template page groups ---
+        det_assets, to_extract = await _try_deterministic_extraction(
+            to_extract, company_name, config.extract_model, costs,
+        )
+        if det_assets:
+            show_detail(f"Deterministic extraction: {len(det_assets)} assets")
+            all_assets.extend(det_assets)
 
         if not to_extract:
             return all_assets
