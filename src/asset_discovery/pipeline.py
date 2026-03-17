@@ -397,6 +397,14 @@ async def run(
         costs=costs,
     )
 
+    # Save cost breakdown
+    if costs:
+        cost_data = costs.summary()
+        cost_data["elapsed_seconds"] = round(elapsed, 1)
+        (run_dir / "cost_summary.json").write_text(
+            json.dumps(cost_data, indent=2, default=str)
+        )
+
     console.print()
     console.print(f"  [dim]Saved to[/dim] [bold]{run_dir}[/bold]")
     console.print()
