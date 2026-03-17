@@ -118,6 +118,9 @@ async def run_scrape(
                 usage=scraper_usage,
             )
 
+            stall_strikes = 0
+            max_stall_strikes = 3  # give up after 3 consecutive stalls
+
             with stage_progress(total, "Scraping", "pages") as (progress, task):
                 try:
                     while True:
@@ -128,14 +131,21 @@ async def run_scrape(
                         except StopAsyncIteration:
                             break
                         except (TimeoutError, asyncio.TimeoutError):
-                            remaining = total - (succeeded + failed)
-                            failed += remaining
-                            show_warning(
-                                f"Stalled for {stall_timeout}s — "
-                                f"skipping {remaining} remaining pages"
-                            )
-                            break
+                            stall_strikes += 1
+                            failed += 1
+                            progress.advance(task)
+                            if stall_strikes >= max_stall_strikes:
+                                remaining = total - (succeeded + failed)
+                                if remaining > 0:
+                                    failed += remaining
+                                show_warning(
+                                    f"Stalled {max_stall_strikes}x — "
+                                    f"skipping {remaining} remaining pages"
+                                )
+                                break
+                            continue
 
+                        stall_strikes = 0  # reset on any page received
                         if page.success and page.markdown:
                             succeeded += 1
                             pid, chash = save_scraped_page(
