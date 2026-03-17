@@ -480,18 +480,14 @@ class DiscoverDisplay:
             console.print(Padding(t, (0, 0, 0, self._PAD)))
 
     def show_footer(self, url_count: int | None = None) -> None:
-        """Print panel footer with total URLs and elapsed time."""
+        """Print summary line with total URLs and elapsed time."""
         self._end_section()
         elapsed = time.monotonic() - self._start
         count = url_count if url_count is not None else self._total_saved
         mins, secs = divmod(int(elapsed), 60)
         time_str = f"{mins}m {secs:02d}s" if mins else f"{secs}s"
         console.print()
-        footer = Text()
-        footer.append("Done", style="bold")
-        footer.append("  ·  ", style="dim")
-        footer.append(f"{count} urls saved")
-        footer.append("  ·  ", style="dim")
-        footer.append(time_str)
-        console.print(Panel(footer, border_style="dim", padding=(0, 1)))
+        t = Text()
+        t.append(f"  Done  ·  {count} urls saved  ·  {time_str}", style="bold green")
+        console.print(t)
         console.print()  # space before next stage

@@ -37,6 +37,20 @@ async def run_scrape(
     """
     from rich.panel import Panel
     from rich.padding import Padding
+    import logging
+
+    # Style web-scraper log messages with indentation
+    from rich.logging import RichHandler
+    scraper_log = logging.getLogger("web_scraper.scraper")
+    scraper_log.setLevel(logging.WARNING)
+    if not any(isinstance(h, RichHandler) for h in scraper_log.handlers):
+        handler = RichHandler(
+            console=console, show_path=False, show_time=False,
+            show_level=False, markup=True,
+        )
+        handler.setLevel(logging.WARNING)
+        scraper_log.addHandler(handler)
+        scraper_log.propagate = False
 
     start = time.monotonic()
 
@@ -95,7 +109,7 @@ async def run_scrape(
                 to_scrape = deduped
 
             total = len(to_scrape)
-            stall_timeout = 90
+            stall_timeout = 30
             stream = scrape_stream(
                 urls=[u["url"] for u in to_scrape],
                 api_key=config.spider_api_key,
@@ -167,19 +181,19 @@ async def run_scrape(
     total_all = len(all_pages)
     pct = (succeeded / (succeeded + failed) * 100) if (succeeded + failed) else 100
 
-    footer = Text()
-    footer.append("Done", style="bold")
+    footer = Text("  Done", style="bold green")
     footer.append("  ·  ", style="dim")
     if cached_pages:
-        footer.append(f"{len(cached_pages)} cached + {total_new} scraped")
+        footer.append(f"{len(cached_pages)} cached + {total_new} scraped", style="bold")
     else:
-        footer.append(f"{total_new} scraped")
-    footer.append(f" ({pct:.0f}%)", style="green" if pct >= 95 else "yellow")
+        footer.append(f"{total_new} scraped", style="bold")
+    footer.append(f" ({pct:.0f}%)", style="bold green" if pct >= 95 else "bold yellow")
     if failed:
-        footer.append(f"  ·  {failed} failed", style="red")
+        footer.append("  ·  ", style="dim")
+        footer.append(f"{failed} failed", style="bold red")
     footer.append("  ·  ", style="dim")
-    footer.append(time_str)
-    console.print(Panel(footer, border_style="dim", padding=(0, 1)))
+    footer.append(time_str, style="bold")
+    console.print(footer)
     console.print()
 
     return all_pages
