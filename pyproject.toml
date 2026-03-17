@@ -20,6 +20,8 @@ dependencies = [
     "corp-profile",
     "fastembed>=0.7.4",
     "beautifulsoup4>=4.14.3",
+    "openpyxl>=3.1.5",
+    "geo-resolve",
 ]
 
 [tool.uv.sources]
@@ -27,6 +29,7 @@ web-scraper = { path = "../web-scraper", editable = true }
 doc-extractor = { path = "../doc-extractor", editable = true }
 rag = { path = "../rag", editable = true }
 corp-profile = { path = "../corp-profile", editable = true }
+geo-resolve = { path = "../geo-resolve" }
 
 [project.optional-dependencies]
 test = ["pytest>=8.0", "pytest-asyncio>=0.25.0", "respx>=0.22.0"]

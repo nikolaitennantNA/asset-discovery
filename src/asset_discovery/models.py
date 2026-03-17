@@ -102,8 +102,8 @@ class ExtractedAsset(BaseModel):
         description="ISIN of the parent company, if mentioned.",
     )
     entity_stake_pct: float | None = Field(
-        default=None,
-        description="Ownership percentage (0-100), if mentioned.",
+        default=100,
+        description="Ownership percentage (0-100). Default 100 unless stated otherwise.",
     )
     latitude: float | None = Field(
         default=None,
@@ -120,7 +120,7 @@ class ExtractedAsset(BaseModel):
     )
     status: str = Field(
         default="",
-        description="Operating, Construction, Planned, or Cancelled.",
+        description="Open, Construction, Planned, or Cancelled.",
     )
     capacity: float | None = Field(
         default=None,
@@ -152,6 +152,17 @@ class ExtractedAsset(BaseModel):
         description="Dict of additional context with descriptive keys "
         "(e.g. fuel_type, year_built, technology, additional_capacity).",
     )
+    geocodable: bool = Field(
+        default=False,
+        description="True if the address is a specific street address that can be "
+        "geocoded. False for vague or non-addressable locations (e.g. 'North Sea', "
+        "'offshore', country-level only).",
+    )
+    doc_index: int | None = Field(
+        default=None,
+        description="Index of the source document this asset was extracted from "
+        "(matches doc_index in the document header).",
+    )
 
 
 class Asset(ExtractedAsset):
@@ -162,7 +173,7 @@ class Asset(ExtractedAsset):
     attribution_source: str = ""
     source_url: str = ""
     domain_source: str = ""
-    qa_flag: str = ""  # set by QA: "underreported", "low_confidence", etc.
+    qa_flag: str = ""  # set by QA (for xlsx Key sheet, not in CSV delivery)
 
 
 class CoverageFlag(BaseModel):

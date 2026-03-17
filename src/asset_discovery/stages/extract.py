@@ -200,7 +200,7 @@ def _fields_to_asset(fields: dict, company_name: str, template: dict) -> Asset |
         latitude=lat,
         longitude=lon,
         address=address,
-        status="Operating",
+        status="Open",
         entity_stake_pct=100,
         asset_type_raw=template.get("asset_type_raw", ""),
         naturesense_asset_type=template.get("naturesense_asset_type", ""),
@@ -223,7 +223,7 @@ asset, each containing ONLY these fields:
 - naturesense_asset_type (from the reference below)
 - industry_code (6-digit GICS code from the reference below)
 - entity_stake_pct (default 100 unless you know otherwise)
-- status ("Operating" unless the name suggests closed/planned)
+- status ("Open" unless the name suggests closed/planned)
 
 Be consistent — if these are all the same type, give them all the same classification.
 Only vary if you have a clear reason (e.g. different names suggest different asset types).
@@ -472,32 +472,36 @@ def _dedup_by_coords(assets: list[Asset], threshold: float = _COORD_DEDUP_THRESH
 
 
 EXTRACT_PROMPT_TEMPLATE = """\
-Extract all physical assets belonging to {company} and its subsidiaries from the
-documents below. Only extract assets owned or operated by {company}.
+Extract individual physical assets belonging to {company} from the documents below.
 
-Physical assets include: facilities, plants, factories, mines, quarries, offices,
-warehouses, data centers, stores, properties, wind/solar farms, pipelines,
-terminals, refineries, and any other permanent physical infrastructure.
+An asset is a SINGLE physical location you can point to on a map — one store, one
+plant, one office, one warehouse. Each must have its own name and ideally its own
+address or coordinates.
+
+NOT assets (do not extract):
+- Aggregate descriptions ("stores in Alabama", "store network", "500 locations")
+- Categories or statistics ("stores with LED lighting", "stores opened in 2024")
+- Events, programs, campaigns, foundations
+- Datasets or file references ("KML dataset", "annual report")
 
 Field guidance:
-- asset_name: include any official identifier or number (e.g. "Store #102",
-  "Plant 3", "Unit B"). These help with deduplication downstream.
-- entity_stake_pct: default to 100 unless the document says otherwise (joint
-  venture, partial ownership, minority stake).
-- supplementary_details: capture anything useful beyond the core fields.
-  Use descriptive keys.
+- asset_name: the specific name of THIS facility, including any number/ID
+  (e.g. "Chandler - Store #33", "Aurora Distribution Center"). Do NOT prefix
+  with the company name — entity_name already identifies the company.
+- entity_name: always use the company's full legal name consistently:
+  "{company}". Only use a subsidiary name if the document clearly states
+  a different entity owns/operates the asset.
+- entity_stake_pct: default to 100 unless stated otherwise.
+- supplementary_details: anything useful beyond core fields (phone, hours, etc).
 
 ## Company Context
 {company_context}
 {ald_summary}
 
 ## NatureSense Asset Type Reference
-Classify each asset's naturesense_asset_type using the descriptions below:
 {naturesense_reference}
 
 ## GICS Industry Code Reference
-Assign each asset's industry_code (6-digit) based on the asset type. Use the
-descriptions below to pick the best-fit industry for each asset:
 {gics_reference}
 """
 
@@ -767,7 +771,19 @@ async def run_extract(
         llm_result.extend(rag_result)
 
         all_assets.extend(det_result)
-        new_assets = [Asset(**e.model_dump()) for e in llm_result]
+
+        # Build URL lookup from doc indices — each batch's documents are
+        # numbered 0..N in the prompt via doc_index headers
+        doc_urls = [p.get("url", "") for p in llm_pages if p.get("markdown")]
+        new_assets = []
+        for e in llm_result:
+            dump = e.model_dump()
+            # Use doc_index to set source_url, then drop it from Asset
+            idx = dump.pop("doc_index", None)
+            asset = Asset(**dump)
+            if idx is not None and 0 <= idx < len(doc_urls):
+                asset.source_url = doc_urls[idx]
+            new_assets.append(asset)
 
         # Save extraction results
         all_dumped = [a.model_dump() for a in new_assets]

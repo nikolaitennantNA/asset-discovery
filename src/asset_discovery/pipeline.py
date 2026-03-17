@@ -89,30 +89,68 @@ def _save_extractions(run_dir: Path, assets: list[Asset]) -> None:
     )
 
 
-_ASSET_CSV_FIELDS = [
-    "asset_id", "asset_name", "entity_name", "entity_isin", "parent_name",
-    "entity_stake_pct", "latitude", "longitude", "address", "status",
+_TREX_FIELDS = [
+    "asset_id", "entity_name", "entity_isin", "parent_name", "parent_isin",
+    "name", "entity_stake_pct", "latitude", "longitude", "address", "status",
     "capacity", "capacity_units", "asset_type_raw", "naturesense_asset_type",
-    "industry_code", "source_url", "domain_source", "date_researched",
-    "supplementary_details", "qa_flag",
+    "industry_code", "date_researched", "supplementary_details",
+    "attribution_source", "source_url",
 ]
 
 
-def _save_merged(run_dir: Path, assets: list[Asset]) -> None:
+def _save_merged(run_dir: Path, assets: list[Asset], qa_report=None) -> None:
+    # JSON (full data)
     (run_dir / "final_assets.json").write_text(
         json.dumps([a.model_dump() for a in assets], indent=2, default=str)
     )
-    # Also save as CSV
+
+    # CSV in TREX ALD format
     path = run_dir / "final_assets.csv"
     with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=_ASSET_CSV_FIELDS, extrasaction="ignore")
+        writer = csv.DictWriter(f, fieldnames=_TREX_FIELDS, extrasaction="ignore")
         writer.writeheader()
         for a in assets:
             row = a.model_dump()
-            # Flatten supplementary_details to string for CSV
+            # Map asset_name → name (TREX convention)
+            row["name"] = row.pop("asset_name", "")
             if row.get("supplementary_details"):
                 row["supplementary_details"] = json.dumps(row["supplementary_details"])
-            writer.writerow({k: row.get(k, "") for k in _ASSET_CSV_FIELDS})
+            writer.writerow({k: row.get(k, "") for k in _TREX_FIELDS})
+
+    # XLSX with Key sheet + data sheet
+    try:
+        import openpyxl
+        from openpyxl.styles import PatternFill
+
+        wb = openpyxl.Workbook()
+
+        # Key sheet
+        key_ws = wb.active
+        key_ws.title = "Key"
+        key_ws.append(["Quality Flags"])
+        if qa_report and qa_report.coverage_flags:
+            for flag in qa_report.coverage_flags:
+                key_ws.append([f"[{flag.severity}] {flag.flag_type}: {flag.description}"])
+        else:
+            key_ws.append(["No quality flags — coverage looks good."])
+        if qa_report and qa_report.summary:
+            key_ws.append([])
+            key_ws.append(["QA Summary"])
+            key_ws.append([qa_report.summary])
+
+        # Data sheet
+        data_ws = wb.create_sheet("Assets")
+        data_ws.append(_TREX_FIELDS)
+        for a in assets:
+            row = a.model_dump()
+            row["name"] = row.pop("asset_name", "")
+            if row.get("supplementary_details"):
+                row["supplementary_details"] = json.dumps(row["supplementary_details"])
+            data_ws.append([row.get(k, "") for k in _TREX_FIELDS])
+
+        wb.save(run_dir / "final_assets.xlsx")
+    except ImportError:
+        pass  # openpyxl not installed, skip xlsx
 
 
 def _save_qa(run_dir: Path, qa_report: QAReport) -> None:
@@ -267,6 +305,33 @@ async def run(
     if stop_after == "merge":
         return _result(assets, None, start, stages_run)
 
+    # --- Geocode assets missing coordinates ---
+    assets_needing_geocode = [
+        a for a in assets
+        if a.geocodable and a.latitude is None and a.longitude is None and a.address
+    ]
+    if assets_needing_geocode:
+        from .display import show_detail
+        show_detail(f"Geocoding {len(assets_needing_geocode)} assets without coordinates...")
+        try:
+            from geo_resolve import Geocoder
+            gc = Geocoder()
+            geocoded = 0
+            for asset in assets_needing_geocode:
+                try:
+                    lat, lon = gc.geocode(asset.address)
+                    if lat and lon:
+                        asset.latitude = lat
+                        asset.longitude = lon
+                        geocoded += 1
+                except Exception:
+                    pass
+            show_detail(f"Geocoded {geocoded}/{len(assets_needing_geocode)} assets")
+        except ImportError:
+            show_detail("geo-resolve not installed — skipping geocoding")
+        except Exception as e:
+            show_detail(f"Geocoding failed: {e}")
+
     # --- Stage 6: QA ---
     from .stages.qa import run_qa
 
@@ -289,8 +354,8 @@ async def run(
     finally:
         conn.close()
 
-    # Re-save final assets with QA flags
-    _save_merged(run_dir, assets)
+    # Re-save final assets with QA flags + xlsx
+    _save_merged(run_dir, assets, qa_report=qa_report)
 
     # --- Display results ---
     from .display import show_assets_table, show_cost_summary, show_coverage_flags, console
