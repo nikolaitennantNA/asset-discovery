@@ -14,7 +14,7 @@ import csv
 import sys
 import time
 
-PLACES_FILE = "/Users/nikolai.tennant/Documents/GitHub/web-scraper/us_places.geoparquet"
+PLACES_FILE = "/Users/nikolai.tennant/Documents/GitHub/asset-discovery/global_places.geoparquet"
 
 
 def extract(

@@ -26,3 +26,8 @@ output/
 
 # Local docs / research (not tracked)
 docs/
+# Large data files
+*.geoparquet
+*.gpkg
+output/
+global_places.geoparquet
