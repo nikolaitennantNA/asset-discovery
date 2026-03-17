@@ -101,7 +101,7 @@ async def run_scrape(
                 to_scrape = deduped
 
             total = len(to_scrape)
-            stall_timeout = 30
+            stall_timeout = 20
             stream = scrape_stream(
                 urls=[u["url"] for u in to_scrape],
                 api_key=config.spider_api_key,
@@ -111,7 +111,11 @@ async def run_scrape(
             )
 
             stall_strikes = 0
-            max_stall_strikes = 3  # give up after 3 consecutive stalls
+            max_stall_strikes = 3
+            slow_strikes = 0
+            max_slow_strikes = 8  # bail if 8 pages in a row are slow
+            page_times: list[float] = []
+            last_page_time = time.monotonic()
 
             with stage_progress(total, "Scraping", "pages") as (progress, task):
                 try:
@@ -137,7 +141,28 @@ async def run_scrape(
                                 break
                             continue
 
-                        stall_strikes = 0  # reset on any page received
+                        stall_strikes = 0
+
+                        # Track page speed — bail if consistently slow
+                        now = time.monotonic()
+                        gap = now - last_page_time
+                        last_page_time = now
+                        page_times.append(gap)
+                        if len(page_times) > 20:
+                            avg = sum(page_times[-20:]) / 20
+                            if gap > max(avg * 5, 5):
+                                slow_strikes += 1
+                            else:
+                                slow_strikes = 0
+                            if slow_strikes >= max_slow_strikes:
+                                remaining = total - (succeeded + failed)
+                                if remaining > 0:
+                                    failed += remaining
+                                show_warning(
+                                    f"Scraping degraded ({slow_strikes} slow pages) "
+                                    f"— skipping {remaining} remaining"
+                                )
+                                break
                         if page.success and page.markdown:
                             succeeded += 1
                             pid, chash = save_scraped_page(

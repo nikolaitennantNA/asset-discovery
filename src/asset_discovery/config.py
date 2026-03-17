@@ -116,6 +116,9 @@ class Config:
     discover_supervisor_model: str = ""
     discover_worker_model: str = ""
     extract_model: str = ""
+    extract_schema_model: str = ""
+    extract_enrich_model: str = ""
+    deterministic_extraction: bool = True
     count_model: str = ""
     summary_model: str = ""
     merge_model: str = ""
@@ -221,6 +224,12 @@ class Config:
             self.discover_worker_model = os.environ.get("DISCOVER_WORKER_MODEL") or fallback
             self.discover_model = fallback
         self.extract_model = _resolve_str("EXTRACT_MODEL", models, "extract", bedrock_default)
+        self.extract_schema_model = _resolve_str(
+            "EXTRACT_SCHEMA_MODEL", models, "extract_schema", self.extract_model)
+        self.extract_enrich_model = _resolve_str(
+            "EXTRACT_ENRICH_MODEL", models, "extract_enrich", self.extract_model)
+        self.deterministic_extraction = _resolve_bool(
+            "DETERMINISTIC_EXTRACTION", models, "deterministic", True)
         self.count_model = _resolve_str("COUNT_MODEL", models, "count", haiku)
         self.summary_model = _resolve_str("SUMMARY_MODEL", models, "summary", haiku)
         self.merge_model = _resolve_str("MERGE_MODEL", models, "merge", "openai/gpt-5-mini")

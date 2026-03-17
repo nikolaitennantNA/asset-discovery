@@ -695,24 +695,27 @@ async def run_extract(
                 extract_pages.append(page)
 
         # --- Step 3+4: Split deterministic vs LLM and run ALL in parallel ---
-        # Group pages by prefix for potential deterministic extraction
-        prefix_groups: dict[str, list[dict]] = {}
-        non_prefix_pages: list[dict] = []
-        for page in extract_pages:
-            url = page.get("url", "")
-            path = urlparse(url).path or "/"
-            parts = [p for p in path.split("/") if p]
-            prefix = "/" + "/".join(parts[:2]) + "/" if len(parts) >= 2 else "/"
-            prefix_groups.setdefault(prefix, []).append(page)
-
-        # Identify which prefix groups are large enough for deterministic
         det_candidates: list[tuple[str, list[dict]]] = []
-        for prefix, group in sorted(prefix_groups.items(), key=lambda x: -len(x[1])):
-            pages_with_html = [p for p in group if p.get("raw_html")]
-            if len(pages_with_html) >= _DETERMINISTIC_MIN_GROUP:
-                det_candidates.append((prefix, group))
-            else:
-                non_prefix_pages.extend(group)
+        non_prefix_pages: list[dict] = []
+
+        if config.deterministic_extraction:
+            # Group pages by prefix for potential deterministic extraction
+            prefix_groups: dict[str, list[dict]] = {}
+            for page in extract_pages:
+                url = page.get("url", "")
+                path = urlparse(url).path or "/"
+                parts = [p for p in path.split("/") if p]
+                prefix = "/" + "/".join(parts[:2]) + "/" if len(parts) >= 2 else "/"
+                prefix_groups.setdefault(prefix, []).append(page)
+
+            for prefix, group in sorted(prefix_groups.items(), key=lambda x: -len(x[1])):
+                pages_with_html = [p for p in group if p.get("raw_html")]
+                if len(pages_with_html) >= _DETERMINISTIC_MIN_GROUP:
+                    det_candidates.append((prefix, group))
+                else:
+                    non_prefix_pages.extend(group)
+        else:
+            non_prefix_pages = extract_pages
 
         # Build LLM docs from pages that won't be deterministic
         llm_docs = [
@@ -740,7 +743,7 @@ async def run_extract(
             async def _process_prefix(prefix: str, group: list[dict]):
                 pages_with_html = [p for p in group if p.get("raw_html")]
                 sample = pages_with_html[0]
-                schema = await _generate_schema(sample["raw_html"], config.extract_model, costs)
+                schema = await _generate_schema(sample["raw_html"], config.extract_schema_model, costs)
                 if not schema:
                     return [], group
 
@@ -809,7 +812,7 @@ async def run_extract(
                 show_detail(f"Deterministic total: {len(det_assets)} assets")
                 det_assets = await _enrich_deterministic_assets(
                     det_assets, company_name, company_context,
-                    config.extract_model, costs,
+                    config.extract_enrich_model, costs,
                 )
 
             return det_assets, fallback_pages
