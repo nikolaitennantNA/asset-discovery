@@ -650,27 +650,22 @@ async def run_extract(
         # --- Step 2: Route pages ---
         RAG_ONLY_THRESHOLD = 120
         rag_only_count = 0
-        exhaustive_docs: list[tuple[Document, int]] = []
-        normal_pages: list[dict] = []
+        extract_pages: list[dict] = []
 
         for doc, count in count_results:
             url = doc.metadata.get("url", "")
             page = page_by_url.get(url)
             if count >= RAG_ONLY_THRESHOLD:
-                url_short = url[:60]
-                show_detail(f"  ~{count} assets in {url_short} → RAG-only")
+                show_detail(f"  ~{count} assets in {url[:60]} → RAG-only")
                 rag_only_count += 1
-            elif count > EXHAUSTIVE_THRESHOLD:
-                url_short = url[:60]
-                show_detail(f"  ~{count} assets in {url_short} (exhaustive)")
-                exhaustive_docs.append((doc, count))
-            else:
-                if page:
-                    normal_pages.append(page)
+            elif page:
+                extract_pages.append(page)
 
-        # --- Step 3: Split normal pages into deterministic vs LLM ---
+        # --- Step 3: Split into deterministic vs LLM ---
+        # _try_deterministic_extraction handles schema generation, validation,
+        # and falls back to LLM automatically for groups where schema fails.
         det_assets, llm_pages = await _try_deterministic_extraction(
-            normal_pages, company_name, config.extract_model, costs,
+            extract_pages, company_name, config.extract_model, costs,
         )
 
         llm_docs = [
@@ -684,11 +679,10 @@ async def run_extract(
         show_detail(
             f"Routing: {len(det_assets)} deterministic, "
             f"{len(llm_docs)} LLM, "
-            f"{len(exhaustive_docs)} exhaustive, "
             f"{rag_only_count} RAG-only"
         )
 
-        # --- Step 4: Run ALL extraction paths in parallel ---
+        # --- Step 4: Deterministic enrichment + LLM extraction in parallel ---
         async def _run_deterministic():
             if not det_assets:
                 return []
@@ -697,7 +691,7 @@ async def run_extract(
                 det_assets, company_name, config.extract_model, costs,
             )
 
-        async def _run_llm_normal():
+        async def _run_llm():
             if not llm_docs:
                 return []
             extractor_usage = ExtractorUsage()
@@ -716,35 +710,9 @@ async def run_extract(
             show_detail(f"LLM extracted {len(result)} assets from {len(llm_docs)} pages")
             return result
 
-        async def _run_exhaustive_one(doc: Document, estimated_count: int, idx: int):
-            exhaust_usage = ExtractorUsage()
-            assets = await extract_exhaustive(
-                doc, ExtractedAsset, prompt, config.extract_model,
-                estimated_count, config=extractor_cfg, usage=exhaust_usage,
-            )
-            if costs:
-                costs.track_llm(
-                    config.extract_model,
-                    exhaust_usage.input_tokens, exhaust_usage.output_tokens,
-                    "extract",
-                )
-            url_short = doc.metadata.get("url", "?")[:60]
-            show_detail(f"  Exhaustive: {len(assets)} assets from {url_short}")
-            return assets
-
-        # Build task list: deterministic + normal LLM + each exhaustive page
-        tasks = [_run_deterministic(), _run_llm_normal()]
-        for i, (doc, est) in enumerate(exhaustive_docs):
-            tasks.append(_run_exhaustive_one(doc, est, i))
-
-        show_detail(f"Running {len(tasks)} extraction tasks in parallel...")
-        results = await asyncio.gather(*tasks)
-
-        # Unpack: first result is deterministic, second is normal LLM, rest are exhaustive
-        det_result = results[0]
-        llm_result = results[1]
-        for exhaustive_result in results[2:]:
-            llm_result.extend(exhaustive_result)
+        det_result, llm_result = await asyncio.gather(
+            _run_deterministic(), _run_llm(),
+        )
 
         all_assets.extend(det_result)
         new_assets = [Asset(**e.model_dump()) for e in llm_result]
