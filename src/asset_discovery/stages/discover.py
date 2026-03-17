@@ -160,9 +160,10 @@ async def run_discover(
         try:
             async with asyncio.timeout(timeout):
                 async with agent.iter(
-                    "Briefly state your approach for this company (1-2 sentences), then discover all URLs "
-                    "containing physical asset information. Work systematically: primary site first, then "
-                    "subsidiaries, then regulatory/external. Save URLs as you go.",
+                    "Briefly state your approach, then discover all URLs containing physical asset "
+                    "information. Work systematically: primary site, subsidiaries, regulatory/external. "
+                    "Save URLs as you go. Do the review pass at the end. Don't stop early or offer "
+                    "to do more — complete the full workflow including cleanup.",
                     usage_limits=UsageLimits(
                         tool_calls_limit=config.max_discover_tool_calls,
                         request_limit=None,
