@@ -599,21 +599,9 @@ async def run_extract(
         if not to_extract:
             return all_assets
 
-        # --- Deterministic extraction for template page groups ---
-        det_assets, to_extract = await _try_deterministic_extraction(
-            to_extract, company_name, config.extract_model, costs,
-        )
-        if det_assets:
-            show_detail(f"Deterministic extraction: {len(det_assets)} assets")
-            with show_spinner(f"Enriching {len(det_assets)} deterministic assets..."):
-                det_assets = await _enrich_deterministic_assets(
-                    det_assets, company_name, config.extract_model, costs,
-                )
-            all_assets.extend(det_assets)
+        import asyncio
 
-        if not to_extract:
-            return all_assets
-
+        # --- Step 1: Count assets per page (all pages, cheap model) ---
         documents = [
             Document(
                 content=p["markdown"],
@@ -621,6 +609,8 @@ async def run_extract(
             )
             for p in to_extract if p.get("markdown")
         ]
+        # Map doc URL → page dict for later reference
+        page_by_url = {p["url"]: p for p in to_extract}
 
         ald_summary = ""
         if existing_assets_summary:
@@ -628,27 +618,18 @@ async def run_extract(
                 f"\nThis company has existing known assets:\n{existing_assets_summary}\n"
                 "Extract all assets you find -- dedup happens later."
             )
-
         company_context = (
             await _build_company_context(profile, config.summary_model)
             if profile else company_name
         )
         prompt = EXTRACT_PROMPT_TEMPLATE.format(
-            company=company_name,
-            company_context=company_context,
+            company=company_name, company_context=company_context,
             ald_summary=ald_summary,
             naturesense_reference=naturesense_reference_block(),
             gics_reference=gics_reference_block(),
         )
         count_prompt = COUNT_PROMPT_TEMPLATE.format(company=company_name)
         extractor_cfg = config.extractor_config()
-
-        # --- Two-pass: count assets per page, route high-count pages to
-        # exhaustive extraction ---
-        normal_docs: list[Document] = []
-        exhaustive_docs: list[tuple[Document, int]] = []
-
-        import asyncio
 
         async def _count_one(doc: Document) -> tuple[Document, int]:
             usage = ExtractorUsage()
@@ -666,67 +647,111 @@ async def run_extract(
         with show_spinner(f"Counting assets across {len(documents)} pages..."):
             count_results = await asyncio.gather(*[_count_one(doc) for doc in documents])
 
-        RAG_ONLY_THRESHOLD = 120  # pages with 120+ assets → skip to RAG for QA
-        rag_only_docs: list[tuple[Document, int]] = []
+        # --- Step 2: Route pages ---
+        RAG_ONLY_THRESHOLD = 120
+        rag_only_count = 0
+        exhaustive_docs: list[tuple[Document, int]] = []
+        normal_pages: list[dict] = []
 
         for doc, count in count_results:
+            url = doc.metadata.get("url", "")
+            page = page_by_url.get(url)
             if count >= RAG_ONLY_THRESHOLD:
-                url_short = doc.metadata.get("url", "?")[:60]
-                show_detail(f"  ~{count} assets in {url_short} → RAG-only (QA will query)")
-                rag_only_docs.append((doc, count))
+                url_short = url[:60]
+                show_detail(f"  ~{count} assets in {url_short} → RAG-only")
+                rag_only_count += 1
             elif count > EXHAUSTIVE_THRESHOLD:
-                url_short = doc.metadata.get("url", "?")[:60]
+                url_short = url[:60]
                 show_detail(f"  ~{count} assets in {url_short} (exhaustive)")
                 exhaustive_docs.append((doc, count))
             else:
-                normal_docs.append(doc)
+                if page:
+                    normal_pages.append(page)
 
-        show_detail(
-            f"Routing: {len(normal_docs)} normal, "
-            f"{len(exhaustive_docs)} exhaustive, "
-            f"{len(rag_only_docs)} RAG-only"
+        # --- Step 3: Split normal pages into deterministic vs LLM ---
+        det_assets, llm_pages = await _try_deterministic_extraction(
+            normal_pages, company_name, config.extract_model, costs,
         )
 
-        # Normal extraction for standard pages
-        extracted: list[ExtractedAsset] = []
-        if normal_docs:
-            with show_spinner(f"Extracting from {len(normal_docs)} pages..."):
-                extractor_usage = ExtractorUsage()
-                extracted = await extract(
-                    documents=normal_docs, schema=ExtractedAsset, prompt=prompt,
-                    model=config.extract_model, max_concurrency=config.extractor_default_concurrency,
-                    config=extractor_cfg, usage=extractor_usage,
-                )
+        llm_docs = [
+            Document(
+                content=p["markdown"],
+                metadata={"url": p["url"], "page_id": p.get("page_id") or url_hash(p["url"])},
+            )
+            for p in llm_pages if p.get("markdown")
+        ]
+
+        show_detail(
+            f"Routing: {len(det_assets)} deterministic, "
+            f"{len(llm_docs)} LLM, "
+            f"{len(exhaustive_docs)} exhaustive, "
+            f"{rag_only_count} RAG-only"
+        )
+
+        # --- Step 4: Run ALL extraction paths in parallel ---
+        async def _run_deterministic():
+            if not det_assets:
+                return []
+            show_detail(f"Deterministic: {len(det_assets)} assets from CSS schema")
+            return await _enrich_deterministic_assets(
+                det_assets, company_name, config.extract_model, costs,
+            )
+
+        async def _run_llm_normal():
+            if not llm_docs:
+                return []
+            extractor_usage = ExtractorUsage()
+            result = await extract(
+                documents=llm_docs, schema=ExtractedAsset, prompt=prompt,
+                model=config.extract_model,
+                max_concurrency=config.extractor_default_concurrency,
+                config=extractor_cfg, usage=extractor_usage,
+            )
             if costs:
                 costs.track_llm(
                     config.extract_model,
-                    extractor_usage.input_tokens, extractor_usage.output_tokens, "extract",
+                    extractor_usage.input_tokens, extractor_usage.output_tokens,
+                    "extract",
                 )
-            show_detail(f"Extracted {len(extracted)} assets from {len(normal_docs)} pages")
+            show_detail(f"LLM extracted {len(result)} assets from {len(llm_docs)} pages")
+            return result
 
-        # Exhaustive extraction for medium-high-count pages
-        for i, (doc, estimated_count) in enumerate(exhaustive_docs):
+        async def _run_exhaustive_one(doc: Document, estimated_count: int, idx: int):
+            exhaust_usage = ExtractorUsage()
+            assets = await extract_exhaustive(
+                doc, ExtractedAsset, prompt, config.extract_model,
+                estimated_count, config=extractor_cfg, usage=exhaust_usage,
+            )
+            if costs:
+                costs.track_llm(
+                    config.extract_model,
+                    exhaust_usage.input_tokens, exhaust_usage.output_tokens,
+                    "extract",
+                )
             url_short = doc.metadata.get("url", "?")[:60]
-            with show_spinner(f"Exhaustive extraction ({i+1}/{len(exhaustive_docs)}): {url_short}"):
-                exhaust_usage = ExtractorUsage()
-                exhaustive_assets = await extract_exhaustive(
-                    doc, ExtractedAsset, prompt, config.extract_model, estimated_count,
-                    config=extractor_cfg, usage=exhaust_usage,
-                )
-            if costs:
-                costs.track_llm(
-                    config.extract_model,
-                    exhaust_usage.input_tokens, exhaust_usage.output_tokens, "extract",
-                )
-            show_detail(f"  {len(exhaustive_assets)} assets from {url_short}")
-            extracted.extend(exhaustive_assets)
+            show_detail(f"  Exhaustive: {len(assets)} assets from {url_short}")
+            return assets
 
-        # Convert ExtractedAsset -> Asset (adds pipeline fields)
-        new_assets = [Asset(**e.model_dump()) for e in extracted]
+        # Build task list: deterministic + normal LLM + each exhaustive page
+        tasks = [_run_deterministic(), _run_llm_normal()]
+        for i, (doc, est) in enumerate(exhaustive_docs):
+            tasks.append(_run_exhaustive_one(doc, est, i))
 
-        # Save extraction results per page.
+        show_detail(f"Running {len(tasks)} extraction tasks in parallel...")
+        results = await asyncio.gather(*tasks)
+
+        # Unpack: first result is deterministic, second is normal LLM, rest are exhaustive
+        det_result = results[0]
+        llm_result = results[1]
+        for exhaustive_result in results[2:]:
+            llm_result.extend(exhaustive_result)
+
+        all_assets.extend(det_result)
+        new_assets = [Asset(**e.model_dump()) for e in llm_result]
+
+        # Save extraction results
         all_dumped = [a.model_dump() for a in new_assets]
-        for page in to_extract:
+        for page in llm_pages:
             pid = page.get("page_id") or url_hash(page["url"])
             save_extraction_result(
                 conn, pid, issuer_id, page.get("content_hash", ""),
