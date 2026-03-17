@@ -397,7 +397,9 @@ async def run(
         costs=costs,
     )
 
-    console.print(f"  [dim]Output: {run_dir}[/dim]")
+    console.print()
+    console.print(f"  [dim]Saved to[/dim] [bold]{run_dir}[/bold]")
+    console.print()
 
     return _result(assets, qa_report, start, stages_run, costs)
 
