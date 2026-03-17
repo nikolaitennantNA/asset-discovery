@@ -255,14 +255,31 @@ async def _try_deterministic_extraction(
             remaining.extend(group)
             continue
 
-        # Validate: apply schema to two samples
-        val1 = _apply_schema(sample["raw_html"], schema)
-        val2 = _apply_schema(pages_with_html[1]["raw_html"], schema)
-        if not (val1.get("asset_name") or val1.get("address")) or \
-           not (val2.get("asset_name") or val2.get("address")):
-            log.info("Schema validation failed for %s — falling back to LLM", prefix)
+        # Validate: apply schema to multiple samples spread across the group.
+        # If ANY sample fails, the template varies — fall back to LLM.
+        n_validate = min(5, len(pages_with_html))
+        # Pick samples spread across the group (first, last, middle)
+        indices = [0, len(pages_with_html) - 1]
+        step = max(1, len(pages_with_html) // n_validate)
+        indices.extend(range(step, len(pages_with_html) - 1, step))
+        indices = sorted(set(i for i in indices if i < len(pages_with_html)))[:n_validate]
+
+        schema_ok = True
+        for idx in indices:
+            val = _apply_schema(pages_with_html[idx]["raw_html"], schema)
+            if not (val.get("asset_name") or val.get("address")):
+                log.info(
+                    "Schema failed on sample %d/%d for %s (%s) — falling back to LLM",
+                    idx, len(pages_with_html), prefix,
+                    pages_with_html[idx]["url"][:60],
+                )
+                schema_ok = False
+                break
+        if not schema_ok:
             remaining.extend(group)
             continue
+
+        val1 = _apply_schema(sample["raw_html"], schema)
 
         # LLM-extract the first sample to:
         # 1. Get template fields (asset_type_raw, naturesense_asset_type, industry_code)
