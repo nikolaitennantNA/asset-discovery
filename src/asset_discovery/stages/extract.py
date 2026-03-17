@@ -567,7 +567,20 @@ async def run_extract(
     skip_cache: bool = False,
 ) -> list[Asset]:
     """Extract assets from scraped pages, skipping cached extractions."""
-    show_stage(4, "Extracting assets")
+    import time as _time
+    from rich.panel import Panel
+    from rich.text import Text
+    from ..display import console
+
+    start = _time.monotonic()
+
+    # Panel header
+    header = Text()
+    header.append("[4/6]", style="bold cyan")
+    header.append(" Extracting assets", style="bold")
+    header.append("  ·  ", style="dim")
+    header.append(f"{len(pages)} pages")
+    console.print(Panel(header, border_style="dim", padding=(0, 1)))
 
     conn = get_connection(config)
     all_assets: list[Asset] = []
@@ -771,4 +784,14 @@ async def run_extract(
 
     # Dedup assets with near-identical coordinates (signal injection double-count)
     all_assets = _dedup_by_coords(all_assets)
+
+    # Footer
+    elapsed = _time.monotonic() - start
+    mins, secs = divmod(int(elapsed), 60)
+    time_str = f"{mins}m {secs:02d}s" if mins else f"{secs}s"
+    footer = Text()
+    footer.append(f"  Done  ·  {len(all_assets)} assets  ·  {time_str}", style="bold green")
+    console.print(footer)
+    console.print()
+
     return all_assets

@@ -53,35 +53,35 @@ async def run_merge(
 
     import asyncio
 
-        batch_size = 50
-        batches = [
-            extracted_assets[i : i + batch_size]
-            for i in range(0, len(extracted_assets), batch_size)
-        ]
-        show_detail(f"Merging {len(extracted_assets)} assets in {len(batches)} concurrent batches...")
+    batch_size = 50
+    batches = [
+        extracted_assets[i : i + batch_size]
+        for i in range(0, len(extracted_assets), batch_size)
+    ]
+    show_detail(f"Merging {len(extracted_assets)} assets in {len(batches)} concurrent batches...")
 
-        async def _merge_one(batch: list[Asset], batch_num: int) -> list[Asset]:
-            merged = await _merge_batch(batch, [], [], config.merge_model, costs)
-            if not merged:
-                show_detail(f"Batch {batch_num}: merge returned empty — keeping originals")
-                return batch
-            show_detail(f"Batch {batch_num}: {len(batch)} → {len(merged)} after dedup")
-            return merged
+    async def _merge_one(batch: list[Asset], batch_num: int) -> list[Asset]:
+        merged = await _merge_batch(batch, [], [], config.merge_model, costs)
+        if not merged:
+            show_detail(f"Batch {batch_num}: merge returned empty — keeping originals")
+            return batch
+        show_detail(f"Batch {batch_num}: {len(batch)} → {len(merged)} after dedup")
+        return merged
 
-        with show_spinner(f"Merging {len(batches)} batches concurrently..."):
-            batch_results = await asyncio.gather(*[
-                _merge_one(batch, i + 1) for i, batch in enumerate(batches)
-            ])
+    with show_spinner(f"Merging {len(batches)} batches concurrently..."):
+        batch_results = await asyncio.gather(*[
+            _merge_one(batch, i + 1) for i, batch in enumerate(batches)
+        ])
 
-        final_assets: list[Asset] = []
-        for batch_result in batch_results:
-            final_assets.extend(batch_result)
+    final_assets: list[Asset] = []
+    for batch_result in batch_results:
+        final_assets.extend(batch_result)
 
-        # Final cross-batch dedup pass
-        if len(final_assets) > 1:
-            with show_spinner(f"Final dedup across {len(final_assets)} assets..."):
-                final_assets = await _final_dedup(final_assets, config.merge_model, costs)
-            show_detail(f"Final: {len(final_assets)} unique assets")
+    # Final cross-batch dedup pass
+    if len(final_assets) > 1:
+        with show_spinner(f"Final dedup across {len(final_assets)} assets..."):
+            final_assets = await _final_dedup(final_assets, config.merge_model, costs)
+        show_detail(f"Final: {len(final_assets)} unique assets")
 
     # Assign asset IDs and pipeline metadata after all dedup is done
     today = date.today().isoformat()

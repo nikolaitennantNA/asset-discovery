@@ -204,7 +204,7 @@ async def run(
 
     # --- Set up RAG store ---
     from rag import RAGStore
-    rag_store = RAGStore(config.rag_config(), config.corpgraph_db_url)
+    rag_store = RAGStore(config.corpgraph_db_url, config=config.rag_config())
 
     # --- Stage 3: Scrape ---
     from .stages.scrape import run_scrape
