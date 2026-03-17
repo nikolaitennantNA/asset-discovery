@@ -19,10 +19,17 @@ from .models import Asset, QAReport
 # Intermediate file saving
 # ---------------------------------------------------------------------------
 
-def _make_run_dir(issuer_id: str) -> Path:
-    """Create and return output/<issuer_id>/<timestamp>/ directory."""
+def _make_run_dir(issuer_id: str, company_name: str = "") -> Path:
+    """Create and return output/<company_shortid>/<timestamp>/ directory."""
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
-    run_dir = Path("output") / issuer_id / ts
+    # Build a readable folder name: company_name_abc123
+    short_id = issuer_id[:6]
+    if company_name:
+        slug = re.sub(r"[^a-z0-9]+", "_", company_name.lower()).strip("_")[:30]
+        folder = f"{slug}_{short_id}"
+    else:
+        folder = issuer_id
+    run_dir = Path("output") / folder / ts
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
 
@@ -195,7 +202,7 @@ async def run(
     show_intro_panel(profile.legal_name, issuer_id, profile)
     stages_run.append("profile")
 
-    run_dir = _make_run_dir(issuer_id)
+    run_dir = _make_run_dir(issuer_id, profile.legal_name)
     _save_profile(run_dir, profile, context_doc)
 
     if stop_after == "profile":
@@ -286,7 +293,17 @@ async def run(
     _save_merged(run_dir, assets)
 
     # --- Display results ---
-    from .display import show_assets_table, show_cost_summary, show_coverage_flags
+    from .display import show_assets_table, show_cost_summary, show_coverage_flags, console
+    from rich.text import Text
+
+    # QA summary
+    if qa_report.summary:
+        console.print()
+        t = Text("  QA: ", style="bold")
+        t.append(qa_report.summary, style="italic")
+        console.print(t)
+        console.print()
+
     show_assets_table(assets)
     show_coverage_flags(qa_report)
     elapsed = time.monotonic() - start
@@ -296,8 +313,7 @@ async def run(
         costs=costs,
     )
 
-    from .display import show_detail
-    show_detail(f"Run output saved to {run_dir}")
+    console.print(f"  [dim]Output: {run_dir}[/dim]")
 
     return _result(assets, qa_report, start, stages_run, costs)
 

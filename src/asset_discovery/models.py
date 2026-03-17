@@ -172,6 +172,7 @@ class CoverageFlag(BaseModel):
 
 
 class QAReport(BaseModel):
+    summary: str = ""  # brief QA analysis text
     quality_score: float = 0.0
     missing_types: list[str] = []
     missing_regions: list[str] = []

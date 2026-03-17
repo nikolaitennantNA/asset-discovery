@@ -119,7 +119,8 @@ given the company profile, and fill obvious gaps if possible.
 2. **Web search + scrape** -- only if RAG doesn't fill an obvious gap.
 Max 2 iterations. Don't chase small discrepancies.
 
-## Output coverage flags
-- flag_type: "missing_geography" | "missing_asset_type" | "low_count"
-- severity: "high" only for clearly significant gaps, "medium" for moderate, "low" for minor
+## Output
+- summary: 2-3 sentence analysis of coverage quality. What looks good, what's missing.
+- coverage_flags: only for real gaps you'd actually want to investigate.
+  Use any flag_type that describes the gap. Severity should reflect how much it matters.
 """

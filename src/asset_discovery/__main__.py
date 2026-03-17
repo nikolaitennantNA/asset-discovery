@@ -61,7 +61,8 @@ def main():
             verbose=args.verbose,
             no_cache=args.no_cache,
         ))
-        print(f"\nDone. {result['asset_count']} assets in {result['elapsed']:.1f}s")
+        # Summary table already shows count/time — just a clean exit
+        pass
     else:
         parser.print_help()
         sys.exit(1)
