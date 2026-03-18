@@ -31,3 +31,8 @@ docs/
 *.gpkg
 output/
 global_places.geoparquet
+scripts/verify_assets.py
+scripts/scrape_dg_stores.py
+scripts/classify_dg_satellite.py
+scripts/process_overture.py
+scripts/scrape_dg_cities.py

@@ -30,8 +30,12 @@ def _config_from_url(url_row: dict[str, Any]) -> ScrapeConfig | None:
 
 
 async def run_scrape(
-    issuer_id: str, discovered_urls: list[dict[str, Any]], config: Config,
-    rag_store=None, costs: CostTracker | None = None, no_cache: bool = False,
+    issuer_id: str,
+    discovered_urls: list[dict[str, Any]],
+    config: Config,
+    rag_store=None,
+    costs: CostTracker | None = None,
+    no_cache: bool = False,
 ) -> list[dict[str, Any]]:
     """Scrape URLs, skip cached fresh pages. Returns list of page dicts.
 
@@ -55,7 +59,7 @@ async def run_scrape(
             to_scrape = list(discovered_urls)
         else:
             for url_row in discovered_urls:
-                cached = get_cached_page(conn, url_row["url"])
+                cached = get_cached_page(conn, url_row["url"], issuer_id=issuer_id)
                 if cached:
                     cached_pages.append(cached)
                 else:
@@ -84,6 +88,7 @@ async def run_scrape(
         rag_usage = None
         if rag_store:
             from rag import Usage as RAGUsage
+
             rag_usage = RAGUsage()
 
         succeeded = 0
@@ -122,7 +127,8 @@ async def run_scrape(
                     while True:
                         try:
                             page = await asyncio.wait_for(
-                                stream.__anext__(), timeout=stall_timeout,
+                                stream.__anext__(),
+                                timeout=stall_timeout,
                             )
                         except StopAsyncIteration:
                             break
@@ -166,17 +172,25 @@ async def run_scrape(
                         if page.success and page.markdown:
                             succeeded += 1
                             pid, chash = save_scraped_page(
-                                conn, issuer_id, page.url, page.markdown,
-                                page.raw_html, page.signals, None,
+                                conn,
+                                issuer_id,
+                                page.url,
+                                page.markdown,
+                                page.raw_html,
+                                page.signals,
+                                None,
                                 stale_days=config.page_stale_days,
                             )
-                            all_pages.append({
-                                "page_id": pid, "url": page.url,
-                                "markdown": page.markdown,
-                                "raw_html": page.raw_html,
-                                "signals": page.signals,
-                                "content_hash": chash,
-                            })
+                            all_pages.append(
+                                {
+                                    "page_id": pid,
+                                    "url": page.url,
+                                    "markdown": page.markdown,
+                                    "raw_html": page.raw_html,
+                                    "signals": page.signals,
+                                    "content_hash": chash,
+                                }
+                            )
                         else:
                             failed += 1
 
@@ -185,21 +199,29 @@ async def run_scrape(
                     show_warning(f"Stream error: {e}")
 
         if costs and scraper_usage.pages_scraped:
-            costs.track_spider(scraper_usage.pages_scraped, cost_usd=scraper_usage.total_cost)
+            costs.track_spider(
+                scraper_usage.pages_scraped, cost_usd=scraper_usage.total_cost
+            )
 
     finally:
         conn.close()
 
     # RAG ingestion — batch after scraping completes
     if rag_store:
-        new_pages = [p for p in all_pages if p.get("markdown") and p not in cached_pages]
+        new_pages = [
+            p for p in all_pages if p.get("markdown") and p not in cached_pages
+        ]
         if new_pages:
             from rag import Usage as RAGUsage
             from ..display import show_spinner
+
             rag_usage = RAGUsage()
             docs = [
-                {"id": p.get("page_id", ""), "content": p["markdown"],
-                 "metadata": {"url": p["url"]}}
+                {
+                    "id": p.get("page_id", ""),
+                    "content": p["markdown"],
+                    "metadata": {"url": p["url"]},
+                }
                 for p in new_pages
             ]
             try:
@@ -212,6 +234,7 @@ async def run_scrape(
 
     # Footer
     from ..display import show_done
+
     elapsed = time.monotonic() - start
     pct = (succeeded / (succeeded + failed) * 100) if (succeeded + failed) else 100
     parts = []

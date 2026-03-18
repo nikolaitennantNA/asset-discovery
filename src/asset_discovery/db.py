@@ -17,7 +17,10 @@ def get_connection(config: Config | None = None) -> psycopg.Connection:
     return psycopg.connect(cfg.corpgraph_db_url, row_factory=dict_row)
 
 
-def url_hash(url: str) -> str:
+def url_hash(url: str, issuer_id: str | None = None) -> str:
+    """Hash a URL, optionally scoped to an issuer for cache isolation."""
+    if issuer_id:
+        return hashlib.sha256(f"{issuer_id}:{url}".encode()).hexdigest()
     return hashlib.sha256(url.encode()).hexdigest()
 
 
@@ -25,13 +28,17 @@ def extraction_id(page_id: str, model: str) -> str:
     return hashlib.sha256(f"{page_id}:{model}".encode()).hexdigest()
 
 
-def get_discovered_urls(conn: psycopg.Connection, issuer_id: str) -> list[dict[str, Any]]:
+def get_discovered_urls(
+    conn: psycopg.Connection, issuer_id: str
+) -> list[dict[str, Any]]:
     with conn.cursor() as cur:
         cur.execute("SELECT * FROM discovered_urls WHERE issuer_id = %s", (issuer_id,))
         return cur.fetchall()
 
 
-def save_discovered_urls(conn: psycopg.Connection, issuer_id: str, urls: list[dict[str, Any]]) -> int:
+def save_discovered_urls(
+    conn: psycopg.Connection, issuer_id: str, urls: list[dict[str, Any]]
+) -> int:
     if not urls:
         return 0
     with conn.cursor() as cur:
@@ -43,23 +50,36 @@ def save_discovered_urls(conn: psycopg.Connection, issuer_id: str, urls: list[di
                    ON CONFLICT (url_hash) DO UPDATE SET
                      category = EXCLUDED.category,
                      notes = EXCLUDED.notes""",
-                (url_hash(u["url"]), u["url"], issuer_id, u["category"], u.get("notes")),
+                (
+                    url_hash(u["url"], issuer_id),
+                    u["url"],
+                    issuer_id,
+                    u["category"],
+                    u.get("notes"),
+                ),
             )
     conn.commit()
     return len(urls)
 
 
-def get_cached_page(conn: psycopg.Connection, url: str) -> dict[str, Any] | None:
+def get_cached_page(
+    conn: psycopg.Connection, url: str, issuer_id: str | None = None
+) -> dict[str, Any] | None:
     with conn.cursor() as cur:
-        cur.execute("SELECT * FROM scraped_pages WHERE page_id = %s AND stale_after > NOW()", (url_hash(url),))
+        cur.execute(
+            "SELECT * FROM scraped_pages WHERE page_id = %s AND stale_after > NOW()",
+            (url_hash(url, issuer_id),),
+        )
         return cur.fetchone()
 
 
-def delete_discovered_urls(conn: psycopg.Connection, issuer_id: str, urls: list[str]) -> int:
+def delete_discovered_urls(
+    conn: psycopg.Connection, issuer_id: str, urls: list[str]
+) -> int:
     """Delete discovered URLs by raw URL. Returns count deleted."""
     if not urls:
         return 0
-    hashes = [url_hash(u) for u in urls]
+    hashes = [url_hash(u, issuer_id) for u in urls]
     with conn.cursor() as cur:
         cur.execute(
             "DELETE FROM discovered_urls WHERE issuer_id = %s AND url_hash = ANY(%s)",
@@ -71,15 +91,20 @@ def delete_discovered_urls(conn: psycopg.Connection, issuer_id: str, urls: list[
 
 
 def save_scraped_page(
-    conn: psycopg.Connection, issuer_id: str, url: str,
-    markdown: str, raw_html: str, signals: dict | None, tokens: int | None,
+    conn: psycopg.Connection,
+    issuer_id: str,
+    url: str,
+    markdown: str,
+    raw_html: str,
+    signals: dict | None,
+    tokens: int | None,
     stale_days: int = 30,
 ) -> tuple[str, str]:
     """Save a scraped page. Returns (page_id, content_hash)."""
     # Strip null bytes — Postgres text fields can't contain them
     markdown = markdown.replace("\x00", "") if markdown else ""
     raw_html = raw_html.replace("\x00", "") if raw_html else ""
-    pid = url_hash(url)
+    pid = url_hash(url, issuer_id)
     content_hash = hashlib.sha256(markdown.encode()).hexdigest()
     stale_after = datetime.now(timezone.utc) + timedelta(days=stale_days)
     with conn.cursor() as cur:
@@ -92,14 +117,25 @@ def save_scraped_page(
                  raw_html = EXCLUDED.raw_html, signals = EXCLUDED.signals,
                  tokens = EXCLUDED.tokens, scraped_at = EXCLUDED.scraped_at,
                  stale_after = EXCLUDED.stale_after""",
-            (pid, url, issuer_id, content_hash, markdown, raw_html,
-             psycopg.types.json.Json(signals) if signals else None, tokens, stale_after),
+            (
+                pid,
+                url,
+                issuer_id,
+                content_hash,
+                markdown,
+                raw_html,
+                psycopg.types.json.Json(signals) if signals else None,
+                tokens,
+                stale_after,
+            ),
         )
     conn.commit()
     return pid, content_hash
 
 
-def get_extraction_result(conn: psycopg.Connection, page_id: str, model: str) -> dict[str, Any] | None:
+def get_extraction_result(
+    conn: psycopg.Connection, page_id: str, model: str
+) -> dict[str, Any] | None:
     eid = extraction_id(page_id, model)
     with conn.cursor() as cur:
         cur.execute(
@@ -112,8 +148,12 @@ def get_extraction_result(conn: psycopg.Connection, page_id: str, model: str) ->
 
 
 def save_extraction_result(
-    conn: psycopg.Connection, page_id: str, issuer_id: str,
-    content_hash: str, model: str, assets_json: list[dict],
+    conn: psycopg.Connection,
+    page_id: str,
+    issuer_id: str,
+    content_hash: str,
+    model: str,
+    assets_json: list[dict],
 ) -> None:
     eid = extraction_id(page_id, model)
     with conn.cursor() as cur:
@@ -124,14 +164,23 @@ def save_extraction_result(
                ON CONFLICT (extraction_id) DO UPDATE SET
                  content_hash = EXCLUDED.content_hash, assets_json = EXCLUDED.assets_json,
                  asset_count = EXCLUDED.asset_count, extracted_at = EXCLUDED.extracted_at""",
-            (eid, page_id, issuer_id, content_hash, model,
-             psycopg.types.json.Json(assets_json), len(assets_json)),
+            (
+                eid,
+                page_id,
+                issuer_id,
+                content_hash,
+                model,
+                psycopg.types.json.Json(assets_json),
+                len(assets_json),
+            ),
         )
     conn.commit()
 
 
 def save_qa_report(
-    conn: psycopg.Connection, issuer_id: str, report_json: dict[str, Any],
+    conn: psycopg.Connection,
+    issuer_id: str,
+    report_json: dict[str, Any],
 ) -> None:
     """Upsert QA report (including coverage flags) for an issuer."""
     conn.execute(
@@ -158,19 +207,27 @@ def get_qa_report(conn: psycopg.Connection, issuer_id: str) -> dict[str, Any] | 
         return cur.fetchone()
 
 
-def get_discovered_assets(conn: psycopg.Connection, issuer_id: str) -> list[dict[str, Any]]:
+def get_discovered_assets(
+    conn: psycopg.Connection, issuer_id: str
+) -> list[dict[str, Any]]:
     with conn.cursor() as cur:
-        cur.execute("SELECT * FROM discovered_assets WHERE issuer_id = %s", (issuer_id,))
+        cur.execute(
+            "SELECT * FROM discovered_assets WHERE issuer_id = %s", (issuer_id,)
+        )
         return cur.fetchall()
 
 
-def save_discovered_assets(conn: psycopg.Connection, issuer_id: str, assets: list[dict[str, Any]]) -> int:
+def save_discovered_assets(
+    conn: psycopg.Connection, issuer_id: str, assets: list[dict[str, Any]]
+) -> int:
     if not assets:
         return 0
     with conn.cursor() as cur:
         for a in assets:
             lat, lon = a.get("latitude"), a.get("longitude")
-            geom_expr = "ST_SetSRID(ST_MakePoint(%s, %s), 4326)" if lat and lon else "NULL"
+            geom_expr = (
+                "ST_SetSRID(ST_MakePoint(%s, %s), 4326)" if lat and lon else "NULL"
+            )
             geom_params = (lon, lat) if lat and lon else ()
             cur.execute(
                 f"""INSERT INTO discovered_assets
@@ -188,15 +245,31 @@ def save_discovered_assets(conn: psycopg.Connection, issuer_id: str, assets: lis
                      geom=EXCLUDED.geom, asset_type_raw=EXCLUDED.asset_type_raw,
                      naturesense_asset_type=EXCLUDED.naturesense_asset_type,
                      status=EXCLUDED.status, updated_at=NOW()""",
-                (a.get("asset_id"), issuer_id, a["asset_name"], a.get("entity_name"),
-                 a.get("entity_isin"), a.get("parent_name"), a.get("parent_isin"),
-                 a.get("address"), lat, lon, *geom_params,
-                 a.get("asset_type_raw"), a.get("naturesense_asset_type"),
-                 a.get("industry_code"), a.get("status"), a.get("capacity"),
-                 a.get("capacity_units"), a.get("entity_stake_pct"),
-                 a.get("source_url"), a.get("domain_source"),
-                 psycopg.types.json.Json(a.get("supplementary_details")),
-                 a.get("date_researched"), a.get("attribution_source")),
+                (
+                    a.get("asset_id"),
+                    issuer_id,
+                    a["asset_name"],
+                    a.get("entity_name"),
+                    a.get("entity_isin"),
+                    a.get("parent_name"),
+                    a.get("parent_isin"),
+                    a.get("address"),
+                    lat,
+                    lon,
+                    *geom_params,
+                    a.get("asset_type_raw"),
+                    a.get("naturesense_asset_type"),
+                    a.get("industry_code"),
+                    a.get("status"),
+                    a.get("capacity"),
+                    a.get("capacity_units"),
+                    a.get("entity_stake_pct"),
+                    a.get("source_url"),
+                    a.get("domain_source"),
+                    psycopg.types.json.Json(a.get("supplementary_details")),
+                    a.get("date_researched"),
+                    a.get("attribution_source"),
+                ),
             )
     conn.commit()
     return len(assets)

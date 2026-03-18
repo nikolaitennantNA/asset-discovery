@@ -1,6 +1,6 @@
 # asset-discovery
 
-A 6-stage async pipeline that discovers physical assets (facilities, plants, mines, warehouses, offices) for corporate entities using LLM agents, web scraping, and structured extraction. Output is TREX ALD-aligned asset records persisted to Postgres.
+A 6-stage async pipeline that discovers physical assets (facilities, plants, mines, warehouses, offices) for corporate entities using LLM agents, web scraping, and structured extraction. Output is ALD-aligned asset records persisted to Postgres.
 
 ## Setup
 
@@ -60,7 +60,7 @@ uv run python -m asset_discovery run --from-file boral.json --no-cache
 uv run python -m asset_discovery run --from-file boral.json --verbose
 ```
 
-Each run saves outputs to `output/<company_slug>_<issuer_id>/<timestamp>/` — profile JSON, discovered URLs CSV, scraped page markdown/HTML, extracted assets, and final results as JSON, CSV (TREX ALD format), and XLSX (with QA summary sheet).
+Each run saves outputs to `output/<company_slug>_<issuer_id>/<timestamp>/` — profile JSON, discovered URLs CSV, scraped page markdown/HTML, extracted assets, and final results as JSON, CSV (ALD format), and XLSX (with QA summary sheet).
 
 ## Architecture
 
@@ -99,7 +99,7 @@ See `config.toml` for the full list of tunables with comments.
 
 ## Sub-modules
 
-Five sibling repos are linked as editable deps via `[tool.uv.sources]` in `pyproject.toml`:
+Six sibling repos are linked as editable deps via `[tool.uv.sources]` in `pyproject.toml`:
 
 | Package | Path | Purpose |
 |---|---|---|
@@ -108,6 +108,20 @@ Five sibling repos are linked as editable deps via `[tool.uv.sources]` in `pypro
 | **doc-extractor** | `../doc-extractor` | LLM structured extraction via instructor |
 | **rag** | `../rag` | pgvector ingest + Cohere rerank retrieval |
 | **geo-resolve** | `../geo-resolve` | Geocoding (address → lat/lon) |
+| **ald-checker** | `../ald-checker` | ALD output validation + auto-fix (22 checks) |
+
+## Output Validation
+
+```bash
+# Check a pipeline output CSV (22 checks: schema, consistency, coordinates, dedup)
+uv run ald-check output/.../final_assets.csv
+
+# Auto-fix deterministically (majority vote, casing, fill dates)
+uv run ald-check output/.../final_assets.csv --fix
+
+# Auto-fix with LLM fallback for ambiguous NatureSense/GICS classifications
+uv run ald-check output/.../final_assets.csv --fix --fix-llm
+```
 
 ## Testing
 

@@ -22,6 +22,7 @@ dependencies = [
     "beautifulsoup4>=4.14.3",
     "openpyxl>=3.1.5",
     "geo-resolve",
+    "ald-checker",
 ]
 
 [tool.uv.sources]
@@ -30,6 +31,7 @@ doc-extractor = { path = "../doc-extractor", editable = true }
 rag = { path = "../rag", editable = true }
 corp-profile = { path = "../corp-profile", editable = true }
 geo-resolve = { path = "../geo-resolve" }
+ald-checker = { path = "../ald-checker", editable = true }
 
 [project.optional-dependencies]
 test = ["pytest>=8.0", "pytest-asyncio>=0.25.0", "respx>=0.22.0"]

@@ -822,11 +822,22 @@ async def run_extract(
             if not llm_docs:
                 return []
             extractor_usage = ExtractorUsage()
+            _llm_total_assets = 0
+
+            def _on_batch(done: int, total: int, assets: int) -> None:
+                nonlocal _llm_total_assets
+                _llm_total_assets += assets
+                show_detail(
+                    f"  LLM batch {done}/{total} done — "
+                    f"{assets} assets (running total: {_llm_total_assets})"
+                )
+
             result = await extract(
                 documents=llm_docs, schema=ExtractedAsset, prompt=prompt,
                 model=config.extract_model,
                 max_concurrency=config.extractor_default_concurrency,
                 config=extractor_cfg, usage=extractor_usage,
+                on_batch_done=_on_batch,
             )
             if costs:
                 costs.track_llm(

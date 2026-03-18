@@ -1,4 +1,4 @@
-"""Pydantic models for the asset discovery pipeline — TREX ALD aligned."""
+"""Pydantic models for the asset discovery pipeline — ALD aligned."""
 
 from __future__ import annotations
 

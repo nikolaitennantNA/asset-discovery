@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A 6-stage async pipeline that discovers physical assets (facilities, plants, mines, warehouses, offices) for corporate entities using LLM agents, web scraping, and structured extraction. Output is TREX ALD-aligned asset records persisted to Postgres.
+A 6-stage async pipeline that discovers physical assets (facilities, plants, mines, warehouses, offices) for corporate entities using LLM agents, web scraping, and structured extraction. Output is ALD-aligned asset records persisted to Postgres.
 
 ## Commands
 
@@ -43,6 +43,15 @@ uv run pytest tests/unit/test_config.py
 
 # Run integration tests (needs live Postgres)
 uv run pytest tests/integration/ -m integration
+
+# Validate pipeline output CSV
+uv run ald-check output/.../final_assets.csv
+
+# Auto-fix (deterministic: majority vote, casing, fill dates)
+uv run ald-check output/.../final_assets.csv --fix
+
+# Auto-fix with LLM fallback for ambiguous classifications
+uv run ald-check output/.../final_assets.csv --fix --fix-llm
 ```
 
 ## Architecture
@@ -64,7 +73,7 @@ context   discovered   scraped   extracted  merged  geo-       qa_report
 6. **Geocode** (optional) — Uses `geo-resolve` package to geocode assets with valid addresses but missing lat/lon. Gracefully skips if not installed.
 7. **QA** — pydantic-ai agent evaluates coverage, fills gaps via `rag_query` (cheapest — searches already-scraped pages) and `scrape_and_extract` (web search + scrape + extract new URLs). Outputs `QAReport` with quality score, summary, missing types/regions, and `CoverageFlag`s (with severity levels). High-severity flags propagate to asset `qa_flag` fields.
 
-Each run saves intermediate files to `output/<company_slug>_<issuer_id>/<timestamp>/`. Final output: `final_assets.json`, `final_assets.csv` (TREX ALD format), `final_assets.xlsx` (with "Key" sheet for QA summary + "Assets" data sheet).
+Each run saves intermediate files to `output/<company_slug>_<issuer_id>/<timestamp>/`. Final output: `final_assets.json`, `final_assets.csv` (ALD format), `final_assets.xlsx` (with "Key" sheet for QA summary + "Assets" data sheet).
 
 ### Configuration (`config.py` + `config.toml`)
 
@@ -89,6 +98,7 @@ Five sibling repos are linked as editable deps via `[tool.uv.sources]` in pyproj
 | `doc-extractor` | `../doc-extractor` | LLM structured extraction via instructor |
 | `rag` | `../rag` | pgvector ingest + Cohere rerank retrieval |
 | `geo-resolve` | `../geo-resolve` | Geocoding (address → lat/lon) |
+| `ald-checker` | `../ald-checker` | ALD output validation + auto-fix (22 checks) |
 
 ### Key Patterns
 
@@ -132,3 +142,8 @@ Five sibling repos are linked as editable deps via `[tool.uv.sources]` in pyproj
 - pytest with `asyncio_mode = "auto"` — no need for `@pytest.mark.asyncio` on async tests
 - Unit tests mock DB via `mock_conn` fixture (`tests/unit/conftest.py`); integration tests use live Postgres with per-test cleanup via unique `test_issuer_id` (`tests/integration/conftest.py`)
 - Integration tests marked with `@pytest.mark.integration`
+
+## Naming
+
+- Never use "TREX" anywhere in code, comments, or docs — use "ALD" instead
+- `data/gics_industries.csv` has space-padded column names — loaders must check both `"industry_code"` and `" industry_code"`

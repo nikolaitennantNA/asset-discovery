@@ -26,11 +26,18 @@ _MODEL_PRICING: dict[str, tuple[float, float]] = {
     "gpt-4.1-mini": (0.40, 1.60),
     "gpt-4.1-nano": (0.10, 0.40),
     "gpt-4.1": (2.00, 8.00),
-    # Anthropic / Bedrock (bare model ID after stripping provider + region)
-    "anthropic.claude-opus-4-6-20250219-v1:0": (15.00, 75.00),
-    "anthropic.claude-sonnet-4-6-20250514-v1:0": (3.00, 15.00),
-    "anthropic.claude-haiku-4-5-20251001-v1:0": (0.80, 4.00),
-    "anthropic.claude-sonnet-4-5-20250929-v1:0": (3.00, 15.00),
+    # Anthropic / Bedrock — prices from platform.claude.com/docs Mar 2026
+    # Keys use short suffix matching: _strip_model_prefix() strips provider
+    # + region prefix, then _match_model_pricing() finds the best key match.
+    "claude-opus-4-6": (5.00, 25.00),
+    "claude-opus-4-5": (5.00, 25.00),
+    "claude-opus-4-1": (15.00, 75.00),
+    "claude-opus-4": (15.00, 75.00),
+    "claude-sonnet-4-6": (3.00, 15.00),
+    "claude-sonnet-4-5": (3.00, 15.00),
+    "claude-sonnet-4": (3.00, 15.00),
+    "claude-haiku-4-5": (1.00, 5.00),
+    "claude-haiku-3-5": (0.80, 4.00),
 }
 
 # Non-LLM API pricing (USD)
@@ -42,12 +49,26 @@ _USD_TO_GBP = 0.741
 
 
 def _strip_model_prefix(model: str) -> str:
-    """Strip provider + region prefix: 'bedrock/us.anthropic.claude-...' → 'anthropic.claude-...'"""
+    """Normalize model string to a short family key for pricing lookup.
+
+    Examples:
+        'bedrock/us.anthropic.claude-opus-4-6-v1'       → 'claude-opus-4-6'
+        'openai/gpt-5-mini'                              → 'gpt-5-mini'
+        'anthropic.claude-sonnet-4-6-20250514-v1:0'      → 'claude-sonnet-4-6'
+    """
+    import re
+
     bare = model.split("/", 1)[-1] if "/" in model else model
     for region in ("global.", "us.", "eu.", "jp.", "apac."):
         if bare.startswith(region):
-            bare = bare[len(region) :]
+            bare = bare[len(region):]
             break
+    # Strip 'anthropic.' vendor prefix
+    if bare.startswith("anthropic."):
+        bare = bare[len("anthropic."):]
+    # Strip version suffixes: '-20250219-v1:0', '-v1', '-v1:0' etc.
+    bare = re.sub(r"-\d{8}-v\d+(?::\d+)?$", "", bare)
+    bare = re.sub(r"-v\d+(?::\d+)?$", "", bare)
     return bare
 
 

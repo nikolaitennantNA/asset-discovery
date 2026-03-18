@@ -89,7 +89,7 @@ def _save_extractions(run_dir: Path, assets: list[Asset]) -> None:
     )
 
 
-_TREX_FIELDS = [
+_ALD_FIELDS = [
     "asset_id", "entity_name", "entity_isin", "parent_name", "parent_isin",
     "name", "entity_stake_pct", "latitude", "longitude", "address", "status",
     "capacity", "capacity_units", "asset_type_raw", "naturesense_asset_type",
@@ -106,15 +106,15 @@ def _save_merged(run_dir: Path, assets: list[Asset]) -> None:
 
 
 def _save_final(run_dir: Path, assets: list[Asset], qa_report=None) -> None:
-    """Save final output: JSON + CSV (TREX format) + XLSX (Key + Assets sheets)."""
+    """Save final output: JSON + CSV (ALD format) + XLSX (Key + Assets sheets)."""
     # JSON
     (run_dir / "final_assets.json").write_text(
         json.dumps([a.model_dump() for a in assets], indent=2, default=str)
     )
 
-    # CSV in TREX ALD format
+    # CSV in ALD format
     with open(run_dir / "final_assets.csv", "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=_TREX_FIELDS, extrasaction="ignore")
+        writer = csv.DictWriter(f, fieldnames=_ALD_FIELDS, extrasaction="ignore")
         writer.writeheader()
         for a in assets:
             row = a.model_dump()
@@ -122,7 +122,7 @@ def _save_final(run_dir: Path, assets: list[Asset], qa_report=None) -> None:
             for k, v in row.items():
                 if isinstance(v, (dict, list)):
                     row[k] = json.dumps(v) if v else ""
-            writer.writerow({k: row.get(k, "") for k in _TREX_FIELDS})
+            writer.writerow({k: row.get(k, "") for k in _ALD_FIELDS})
 
     # XLSX with Key + Assets sheets
     try:
@@ -146,14 +146,14 @@ def _save_final(run_dir: Path, assets: list[Asset], qa_report=None) -> None:
 
         # Assets sheet
         data_ws = wb.create_sheet("Assets")
-        data_ws.append(_TREX_FIELDS)
+        data_ws.append(_ALD_FIELDS)
         for a in assets:
             row = a.model_dump()
             row["name"] = row.pop("asset_name", "")
             for k, v in row.items():
                 if isinstance(v, (dict, list)):
                     row[k] = json.dumps(v) if v else ""
-            data_ws.append([row.get(k, "") for k in _TREX_FIELDS])
+            data_ws.append([row.get(k, "") for k in _ALD_FIELDS])
 
         wb.save(run_dir / "final_assets.xlsx")
     except ImportError:

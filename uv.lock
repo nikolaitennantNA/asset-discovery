@@ -96,6 +96,22 @@ wheels = [
 ]
 
 [[package]]
+name = "ald-checker"
+version = "0.1.0"
+source = { editable = "../ald-checker" }
+dependencies = [
+    { name = "cleanco" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cleanco", specifier = ">=2.3" },
+    { name = "litellm", marker = "extra == 'llm'", specifier = ">=1.0" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+]
+provides-extras = ["llm", "test"]
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -149,6 +165,7 @@ name = "asset-discovery"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "ald-checker" },
     { name = "beautifulsoup4" },
     { name = "corp-profile" },
     { name = "doc-extractor" },
@@ -178,6 +195,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ald-checker", editable = "../ald-checker" },
     { name = "beautifulsoup4", specifier = ">=4.14.3" },
     { name = "corp-profile", editable = "../corp-profile" },
     { name = "doc-extractor", editable = "../doc-extractor" },
@@ -389,6 +407,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/60/80/1710844b9706cd44324446eb368e813ebb4a085e96f469f54b61ddff67dc/chonkie_core-0.9.2-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c861f147e5932e659dcbe770ca0779a470acc62e9242bff87f36d03eae29644d", size = 384173, upload-time = "2026-01-21T09:09:32.015Z" },
     { url = "https://files.pythonhosted.org/packages/5c/5c/a31b259ea94620ea4e4100ed4cc952ad770f2c7af36293bbc9154efb5c9e/chonkie_core-0.9.2-cp314-cp314-win_amd64.whl", hash = "sha256:83473c708a23652d6dc70142b2e586f965af3031b1d2a5c6336f1fc78614b452", size = 222275, upload-time = "2026-01-21T09:09:34.148Z" },
     { url = "https://files.pythonhosted.org/packages/48/8a/c15c88f59bc9cf6f7ac994689d048fd60fcb72247f6b67ca31dc4eadf2f8/chonkie_core-0.9.2-cp314-cp314t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:4d6c0b89ee5e21d255bcf7d11f17b07ef811a71292717f50889244474cfab8bc", size = 363813, upload-time = "2026-01-21T09:09:35.175Z" },
+]
+
+[[package]]
+name = "cleanco"
+version = "2.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/e1/0b7b567c915ef1d619713b0caee14041536814767bad0c30b5e6542a40c9/cleanco-2.3.tar.gz", hash = "sha256:26b899b2be871be288408205686c5a1dd5f3ab085b709d041a77f3e3049d2961", size = 12311, upload-time = "2024-05-15T16:18:19.314Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f8/4e/e4a24eec01fbfda0df23582bc9be5d8c32b324d79481edf6d1ff52b03733/cleanco-2.3-py3-none-any.whl", hash = "sha256:7ab4672cdfdabe2375a608686da86005b33df6f347ebf7849c9d0e2651f27e01", size = 11139, upload-time = "2024-05-15T16:18:18.032Z" },
 ]
 
 [[package]]
