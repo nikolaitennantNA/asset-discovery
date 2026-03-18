@@ -35,6 +35,10 @@ def normalize_url(url: str) -> str | None:
     if not raw.startswith(("http://", "https://")):
         raw = f"https://{raw}"
 
+    # Upgrade http → https (prevents duplicate URLs for the same page)
+    if raw.startswith("http://"):
+        raw = "https://" + raw[7:]
+
     parsed = urlparse(raw)
     if not parsed.netloc or "." not in parsed.netloc:
         return None

@@ -73,6 +73,26 @@ def get_cached_page(
         return cur.fetchone()
 
 
+def get_cached_page_batches(
+    conn: psycopg.Connection, url: str, issuer_id: str | None = None
+) -> list[dict[str, Any]]:
+    """Get all cached page batches for a URL (base + signal batches).
+
+    For pages with many embedded locations, the scraper splits the markdown
+    into batches saved under page_ids ``{hash}``, ``{hash}:b1``, etc.
+    Returns all non-stale batches, or an empty list if nothing is cached.
+    """
+    base = url_hash(url, issuer_id)
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT * FROM scraped_pages "
+            "WHERE (page_id = %s OR page_id LIKE %s) AND stale_after > NOW() "
+            "ORDER BY page_id",
+            (base, f"{base}:b%"),
+        )
+        return cur.fetchall()
+
+
 def delete_discovered_urls(
     conn: psycopg.Connection, issuer_id: str, urls: list[str]
 ) -> int:
@@ -99,12 +119,20 @@ def save_scraped_page(
     signals: dict | None,
     tokens: int | None,
     stale_days: int = 30,
+    batch_index: int = 0,
 ) -> tuple[str, str]:
-    """Save a scraped page. Returns (page_id, content_hash)."""
+    """Save a scraped page. Returns (page_id, content_hash).
+
+    When the web-scraper splits a page into signal batches (many embedded
+    locations), each batch is saved with a unique page_id by appending
+    ``:b{n}`` to the base hash.  Batch 0 keeps the original hash for
+    backward compatibility with existing cache lookups.
+    """
     # Strip null bytes — Postgres text fields can't contain them
     markdown = markdown.replace("\x00", "") if markdown else ""
     raw_html = raw_html.replace("\x00", "") if raw_html else ""
-    pid = url_hash(url, issuer_id)
+    base_hash = url_hash(url, issuer_id)
+    pid = base_hash if batch_index == 0 else f"{base_hash}:b{batch_index}"
     content_hash = hashlib.sha256(markdown.encode()).hexdigest()
     stale_after = datetime.now(timezone.utc) + timedelta(days=stale_days)
     with conn.cursor() as cur:

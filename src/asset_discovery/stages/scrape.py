@@ -13,8 +13,9 @@ from web_scraper import scrape_stream, ScrapeConfig, Usage as ScraperUsage
 
 from ..config import Config
 from ..cost import CostTracker
-from ..db import get_connection, get_cached_page, save_scraped_page, url_hash
+from ..db import get_connection, get_cached_page, get_cached_page_batches, save_scraped_page, url_hash
 from ..display import console, show_detail, show_warning, stage_progress
+from ..helpers import normalize_url
 
 
 def _config_from_url(url_row: dict[str, Any]) -> ScrapeConfig | None:
@@ -50,6 +51,24 @@ async def run_scrape(
 
     start = time.monotonic()
 
+    # Normalize URLs and collapse http/https duplicates from the DB.
+    # Old runs may have saved http:// URLs that are now https:// after
+    # the normalize_url fix — dedup here so Spider doesn't scrape both.
+    seen_norm: set[str] = set()
+    deduped_urls: list[dict[str, Any]] = []
+    for url_row in discovered_urls:
+        norm = normalize_url(url_row["url"]) or url_row["url"]
+        if norm not in seen_norm:
+            seen_norm.add(norm)
+            url_row = {**url_row, "url": norm}
+            deduped_urls.append(url_row)
+    if len(deduped_urls) < len(discovered_urls):
+        show_detail(
+            f"Deduplicated {len(discovered_urls) - len(deduped_urls)} "
+            f"http/https duplicate URLs"
+        )
+    discovered_urls = deduped_urls
+
     conn = get_connection(config)
     try:
         to_scrape: list[dict[str, Any]] = []
@@ -59,9 +78,9 @@ async def run_scrape(
             to_scrape = list(discovered_urls)
         else:
             for url_row in discovered_urls:
-                cached = get_cached_page(conn, url_row["url"], issuer_id=issuer_id)
-                if cached:
-                    cached_pages.append(cached)
+                batches = get_cached_page_batches(conn, url_row["url"], issuer_id=issuer_id)
+                if batches:
+                    cached_pages.extend(batches)
                 else:
                     to_scrape.append(url_row)
 
@@ -95,16 +114,6 @@ async def run_scrape(
         failed = 0
 
         if to_scrape:
-            # Dedup URLs
-            seen_urls: set[str] = set()
-            deduped: list[dict[str, Any]] = []
-            for u in to_scrape:
-                if u["url"] not in seen_urls:
-                    seen_urls.add(u["url"])
-                    deduped.append(u)
-            if len(deduped) < len(to_scrape):
-                to_scrape = deduped
-
             total = len(to_scrape)
             stall_timeout = 20
             stream = scrape_stream(
@@ -121,6 +130,12 @@ async def run_scrape(
             max_slow_strikes = 8  # bail if 8 pages in a row are slow
             page_times: list[float] = []
             last_page_time = time.monotonic()
+            # Track signal-batch indices: when the web-scraper splits a
+            # page with many embedded locations into N batches, the stream
+            # yields N ScrapedPage objects with the same URL but different
+            # markdown.  We save each batch with a unique page_id and only
+            # advance the progress bar for the first occurrence.
+            url_batch_count: dict[str, int] = {}
 
             with stage_progress(total, "Scraping", "pages") as (progress, task):
                 try:
@@ -170,31 +185,42 @@ async def run_scrape(
                                 )
                                 break
                         if page.success and page.markdown:
-                            succeeded += 1
+                            batch_idx = url_batch_count.get(page.url, 0)
+                            url_batch_count[page.url] = batch_idx + 1
+                            is_first_batch = batch_idx == 0
+
+                            if is_first_batch:
+                                succeeded += 1
+
                             pid, chash = save_scraped_page(
                                 conn,
                                 issuer_id,
                                 page.url,
                                 page.markdown,
-                                page.raw_html,
-                                page.signals,
+                                # Only store raw_html/signals on first batch
+                                # (identical across batches, saves DB space)
+                                page.raw_html if is_first_batch else "",
+                                page.signals if is_first_batch else None,
                                 None,
                                 stale_days=config.page_stale_days,
+                                batch_index=batch_idx,
                             )
                             all_pages.append(
                                 {
                                     "page_id": pid,
                                     "url": page.url,
                                     "markdown": page.markdown,
-                                    "raw_html": page.raw_html,
-                                    "signals": page.signals,
+                                    "raw_html": page.raw_html if is_first_batch else None,
+                                    "signals": page.signals if is_first_batch else None,
                                     "content_hash": chash,
                                 }
                             )
                         else:
                             failed += 1
 
-                        progress.advance(task)
+                        # Only advance progress for new URLs (not signal batches)
+                        if not page.success or url_batch_count.get(page.url, 0) <= 1:
+                            progress.advance(task)
                 except Exception as e:
                     show_warning(f"Stream error: {e}")
 
